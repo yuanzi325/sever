@@ -1134,12 +1134,16 @@ function renderHome(){
   `;
 }
 
-function renderMemory(){
+function memoryResultsHtml(){
   let list = state.memories.filter(m => MEMORY_FILTERS.includes(m.layer) && !m._archived && isVisibleMemory(m));
   if (currentLayer !== 'all') list = list.filter(m => m.layer === currentLayer);
   if (currentLayer === 'core' && currentCoreSub !== 'all') list = list.filter(m => m.sub_layer === currentCoreSub);
   list = filterMemoriesByQuery(list, searchText);
   list = sortByDateDesc(list, 'date');
+  return list.length ? list.map(m => memoryCard(m)).join('') : '<div class="empty">这里暂时没有符合筛选条件的记录。</div>';
+}
+
+function renderMemory(){
   const filters = [{key:'all',name:'全部'}, ...MEMORY_FILTERS.filter(k=>k!=='all').map(k=>({key:k,name:LAYERS[k].name}))];
   document.getElementById('page-memory').innerHTML = `
     <div class="page-top">
@@ -1151,7 +1155,7 @@ function renderMemory(){
     </div>
     <div class="search-shell">
       <span class="search-label">搜索</span>
-      <input class="search-input clean" placeholder="" value="${escapeHtml(searchText)}" oninput="searchText=this.value;renderMemory()">
+      <input class="search-input clean" placeholder="" value="${escapeHtml(searchText)}" oninput="searchText=this.value;document.getElementById('memory-results').innerHTML=memoryResultsHtml()">
       <span class="search-icon" style="display:inline-block;transform:scaleX(-1)">⌕</span>
     </div>
     <div class="filter-bar" style="margin-bottom:${currentLayer === 'core' ? '0' : '14px'}">${filters.map(f=>{
@@ -1161,7 +1165,7 @@ function renderMemory(){
     }).join('')}</div>
     ${currentLayer === 'core' ? `<div class="subfilter-bar" style="margin:10px 0 14px">${[{key:'all',name:'全部子分区'},...Object.entries(CORE_SUBLAYERS).map(([key,name])=>({key,name}))].map(s=>`<button class="subfilter-btn ${currentCoreSub===s.key?'active':''}" style="background:${currentCoreSub===s.key?'rgba(245,239,223,.95)':'transparent'};color:${currentCoreSub===s.key?'#B29263':'rgba(126,118,116,.55)'}" data-action="set-core-sub" data-id="${escapeHtml(s.key)}">${s.name}</button>`).join('')}</div>` : ''}
     <div class="note-box" style="margin-bottom:14px">${escapeHtml(currentLayer === 'core' ? coreSubNotesText(currentCoreSub) : layerNotesText(currentLayer))}</div>
-    <div>${list.length ? list.map(m => memoryCard(m)).join('') : '<div class="empty">这里暂时没有符合筛选条件的记录。</div>'}</div>
+    <div id="memory-results">${memoryResultsHtml()}</div>
   `;
 }
 
@@ -1221,8 +1225,20 @@ function groupedDiaries(list = filteredDiaries()){
   return Object.entries(map).sort((a,b)=>b[0].localeCompare(a[0]));
 }
 
-function renderDiary(){
+function diaryResultsHtml(){
   const groups = groupedDiaries();
+  return groups.map(([date, pair]) => `
+      <div class="diary-day">
+        <div class="diary-dateline"><span>${date}</span></div>
+        <div class="diary-cols">
+          ${diaryCol('小克', pair.ke, 'var(--lblue)')}
+          ${diaryCol('沅沅', pair.yuan, 'var(--lpink)')}
+        </div>
+      </div>
+    `).join('') || '<div class="empty">没有匹配到日记。</div>';
+}
+
+function renderDiary(){
   document.getElementById('page-diary').innerHTML = `
     <div class="page-top">
       <div class="title">文字，自始至终</div>
@@ -1232,19 +1248,11 @@ function renderDiary(){
       <button class="toolbar-btn primary" onclick="openDiaryForm()">新建日记</button>
       <div class="search-shell" style="flex:1;min-width:220px;margin:0">
         <span class="search-label">搜索</span>
-        <input class="search-input clean" placeholder="" value="${escapeHtml(diarySearchText)}" oninput="diarySearchText=this.value;renderDiary()">
+        <input class="search-input clean" placeholder="" value="${escapeHtml(diarySearchText)}" oninput="diarySearchText=this.value;document.getElementById('diary-results').innerHTML=diaryResultsHtml()">
         <span class="search-icon" style="display:inline-block;transform:scaleX(-1)">⌕</span>
       </div>
     </div>
-    ${groups.map(([date, pair]) => `
-      <div class="diary-day">
-        <div class="diary-dateline"><span>${date}</span></div>
-        <div class="diary-cols">
-          ${diaryCol('小克', pair.ke, 'var(--lblue)')}
-          ${diaryCol('沅沅', pair.yuan, 'var(--lpink)')}
-        </div>
-      </div>
-    `).join('') || '<div class="empty">没有匹配到日记。</div>'}
+    <div id="diary-results">${diaryResultsHtml()}</div>
   `;
 }
 
@@ -1353,6 +1361,22 @@ function jumpToLayer(layer){
 function openMemoryDetailFromEditor(id){
   openMemoryDetail(id);
 }
+function archivedMemoryResultsHtml(){
+  const list = filterMemoriesByQuery(archivedMemoryList(), archivedSearchText);
+  return list.length ? list.map(m => archivedMemoryCard(m)).join('') : '<div class="empty">这里暂时没有符合搜索条件的归档记录。</div>';
+}
+
+function updateArchivedSearchResults(){
+  const allItems = archivedMemoryList();
+  const list = filterMemoriesByQuery(allItems, archivedSearchText);
+  const resultsEl = document.getElementById('archived-memory-results');
+  if (resultsEl) resultsEl.innerHTML = archivedMemoryResultsHtml();
+  const countEl = document.getElementById('archived-memory-count');
+  if (countEl) countEl.textContent = list.length;
+  const subtitleEl = document.getElementById('archived-memory-subtitle');
+  if (subtitleEl) subtitleEl.textContent = `共 ${allItems.length} 条${archivedSearchText.trim() ? ` · 当前匹配 ${list.length} 条` : ''}`;
+}
+
 function renderArchivedMemoriesView(){
   const allItems = archivedMemoryList();
   const list = filterMemoriesByQuery(allItems, archivedSearchText);
@@ -1360,19 +1384,19 @@ function renderArchivedMemoriesView(){
   const shown = list.length;
   showEditor(`
     <div id="archived-memories-editor">
-      <div class="editor-header"><button class="editor-back" onclick="closeEditor()">←</button><div><div class="modal-title">已归档的聊天记录</div><div class="subtitle">共 ${total} 条${archivedSearchText.trim() ? ` · 当前匹配 ${shown} 条` : ''}</div></div></div>
+      <div class="editor-header"><button class="editor-back" onclick="closeEditor()">←</button><div><div class="modal-title">已归档的聊天记录</div><div id="archived-memory-subtitle" class="subtitle">共 ${total} 条${archivedSearchText.trim() ? ` · 当前匹配 ${shown} 条` : ''}</div></div></div>
       <div class="editor-main form-grid">
         <div class="note-box">这里保留已经归档的记忆条目。搜索逻辑与未归档记忆保持一致，点开后仍可查看和编辑具体内容。</div>
         <div class="search-shell" style="margin-bottom:0">
           <span class="search-label">搜索</span>
-          <input class="search-input clean" placeholder="" value="${escapeHtml(archivedSearchText)}" oninput="archivedSearchText=this.value;renderArchivedMemoriesView()">
+          <input class="search-input clean" placeholder="" value="${escapeHtml(archivedSearchText)}" oninput="archivedSearchText=this.value;updateArchivedSearchResults()">
           <span class="search-icon" style="display:inline-block;transform:scaleX(-1)">⌕</span>
         </div>
         <div class="archive-memory-summary">
           <span>已归档记忆</span>
-          <strong>${shown}</strong>
+          <strong id="archived-memory-count">${shown}</strong>
         </div>
-        <div>${list.length ? list.map(m => archivedMemoryCard(m)).join('') : '<div class="empty">这里暂时没有符合搜索条件的归档记录。</div>'}</div>
+        <div id="archived-memory-results">${archivedMemoryResultsHtml()}</div>
       </div>
     </div>
   `);

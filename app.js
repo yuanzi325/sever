@@ -1630,7 +1630,7 @@ async function submitMemoryForm(id=''){
 }
 
 function openDiaryForm(id=''){
-  const d = id ? state.diaries.find(item => item.id === id) : {author:'小克',date:today(),title:'',content:'',moods:['平静'],keywords:[]};
+  const d = normalizeDiary(id ? state.diaries.find(item => item.id === id) : {author:'小克',date:today(),title:'',content:'',moods:['平静'],keywords:[]});
   const selected = new Set(d.moods || []);
   showEditor(`
     <div class="editor-header"><button class="editor-back" onclick="closeEditor()">←</button><div><div class="modal-title">${id?'编辑日记':'新建日记'}</div></div></div>

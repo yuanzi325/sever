@@ -451,7 +451,14 @@ async function forceSaveConflictBackup(){
     showToast('保存失败，请先下载备份', null, false);
   }
 }
-function splitTokens(text=''){ return String(text).split(/[，,]/).map(v => v.trim()).filter(Boolean); }
+function splitTokens(text=''){
+  const seen = new Set();
+  return String(text).split(/[，,、；;\n]+/).map(v => v.trim()).filter(v => {
+    if (!v || seen.has(v)) return false;
+    seen.add(v);
+    return true;
+  });
+}
 
 function moodToVA(mood=''){ return MOOD_VA_MAP[mood] || {valence:0.5, arousal:0.3}; }
 function nowIso(){ return new Date().toISOString(); }
@@ -497,7 +504,26 @@ function safeArray(value, fallback = []){
   return Array.isArray(value) ? value : fallback;
 }
 function safeKeywords(value){
-  return safeArray(value, []).slice(0, KEYWORDS_MAX).map(k => safeStr(k, STR_LIMITS.keyword)).filter(Boolean);
+  let tokens;
+  if (Array.isArray(value)) {
+    tokens = value.map(k => String(k == null ? '' : k).trim());
+  } else if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      tokens = Array.isArray(parsed) ? parsed.map(k => String(k == null ? '' : k).trim()) : splitTokens(value);
+    } catch (_) {
+      tokens = splitTokens(value);
+    }
+  } else {
+    tokens = [];
+  }
+  const seen = new Set();
+  return tokens.filter(k => {
+    const s = safeStr(k, STR_LIMITS.keyword);
+    if (!s || seen.has(s)) return false;
+    seen.add(s);
+    return true;
+  }).slice(0, KEYWORDS_MAX);
 }
 
 function normalizeMemoryMeta(memory = {}){
@@ -1533,7 +1559,7 @@ function openMemoryForm(id=''){
         <label class="input-shell"><span class="input-label">重要程度</span><select id="mf-importance">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}" ${Number(m.importance)===n?'selected':''}>${n}</option>`).join('')}</select></label>
       </div>
       <label class="input-shell"><span class="input-label">心情</span><select id="mf-mood">${Object.keys(MOOD_COLORS).map(mood => `<option value="${mood}" ${m.mood===mood?'selected':''}>${mood}</option>`).join('')}</select></label>
-      <label class="input-shell"><span class="input-label">关键词</span><textarea id="mf-keywords" class="textarea-compact" placeholder="支持中文逗号、英文逗号分隔。">${escapeHtml((m.keywords || []).join('，'))}</textarea></label>
+      <label class="input-shell"><span class="input-label">关键词</span><textarea id="mf-keywords" class="textarea-compact" placeholder="支持中文逗号、英文逗号、顿号、分号、换行分隔。">${escapeHtml((m.keywords || []).join('，'))}</textarea></label>
       <label class="input-shell" style="display:${m.layer==='daily'?'block':'none'}" id="today-shell"><span class="input-label">今天的你</span><textarea id="mf-today">${escapeHtml(m.today_snapshot || '')}</textarea></label>
       <label class="input-shell" style="display:${m.layer==='treasure'?'block':'none'}" id="precious-shell"><span class="input-label">为什么珍贵</span><textarea id="mf-precious">${escapeHtml(m.why_precious || '')}</textarea></label>
       <label class="input-shell"><span class="input-label">正文</span><textarea id="mf-content" style="min-height:220px">${escapeHtml(m.content)}</textarea></label>
@@ -1609,7 +1635,7 @@ function openDiaryForm(id=''){
   showEditor(`
     <div class="editor-header"><button class="editor-back" onclick="closeEditor()">←</button><div><div class="modal-title">${id?'编辑日记':'新建日记'}</div></div></div>
     <div class="editor-main form-grid">
-      <div class="note-box">日记心情用点选标签。关键词可以手动填写，支持中文逗号和英文逗号分隔。</div>
+      <div class="note-box">日记心情用点选标签。关键词可以手动填写，支持多种符号和换行分隔。</div>
       <label class="input-shell"><span class="input-label">标题</span><input id="df-title" value="${escapeHtml(d.title)}"></label>
       <div class="split">
         <label class="input-shell"><span class="input-label">日期</span><input id="df-date" type="date" value="${escapeHtml(d.date)}"></label>
@@ -1619,7 +1645,7 @@ function openDiaryForm(id=''){
         <span class="input-label">心情标签</span>
         <div class="mood-pick">${Object.keys(MOOD_COLORS).map(mood => `<button type="button" class="mood-chip ${selected.has(mood)?'active':''}" data-mood="${mood}" onclick="toggleDiaryMood(this)">${mood}</button>`).join('')}</div>
       </div>
-      <label class="input-shell"><span class="input-label">关键词</span><textarea id="df-keywords" class="textarea-compact" placeholder="支持中文逗号、英文逗号分隔。">${escapeHtml((d.keywords||[]).join('，'))}</textarea></label>
+      <label class="input-shell"><span class="input-label">关键词</span><textarea id="df-keywords" class="textarea-compact" placeholder="支持中文逗号、英文逗号、顿号、分号、换行分隔。">${escapeHtml((d.keywords||[]).join('，'))}</textarea></label>
       <label class="input-shell"><span class="input-label">正文</span><textarea id="df-content" style="min-height:220px">${escapeHtml(d.content)}</textarea></label>
     </div>
     <div class="editor-actions"><button class="solid-btn" data-action="submit-diary-form" data-id="${escapeHtml(id)}">保存</button><button class="ghost-btn" onclick="closeEditor()">取消</button></div>

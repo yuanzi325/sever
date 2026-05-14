@@ -1653,7 +1653,7 @@ function openDiaryForm(id=''){
 }
 function toggleDiaryMood(btn){ btn.classList.toggle('active'); }
 async function submitDiaryForm(id=''){
-  const record = {
+  const record = normalizeDiary({
     id: id || uid('d'),
     author: document.getElementById('df-author').value,
     date: document.getElementById('df-date').value || today(),
@@ -1661,7 +1661,7 @@ async function submitDiaryForm(id=''){
     moods: Array.from(document.querySelectorAll('.mood-chip.active')).map(el => el.dataset.mood),
     keywords: splitTokens(document.getElementById('df-keywords').value),
     content: document.getElementById('df-content').value.trim()
-  };
+  });
   if (id) state.diaries = state.diaries.map(item => item.id === id ? record : item);
   else state.diaries.push(record);
   const btn = document.querySelector('[data-action="submit-diary-form"]');

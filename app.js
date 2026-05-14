@@ -504,21 +504,27 @@ function safeArray(value, fallback = []){
   return Array.isArray(value) ? value : fallback;
 }
 function safeKeywords(value){
-  let tokens;
-  if (Array.isArray(value)) {
-    tokens = value.map(k => String(k == null ? '' : k).trim());
-  } else if (typeof value === 'string' && value.trim()) {
-    try {
-      const parsed = JSON.parse(value);
-      tokens = Array.isArray(parsed) ? parsed.map(k => String(k == null ? '' : k).trim()) : splitTokens(value);
-    } catch (_) {
-      tokens = splitTokens(value);
+  function expandToken(k){
+    const s = String(k == null ? '' : k).trim();
+    if (!s) return [];
+    if (s.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed)) return parsed.flatMap(expandToken);
+      } catch (_) {}
     }
+    return splitTokens(s);
+  }
+  let raw;
+  if (Array.isArray(value)) {
+    raw = value.flatMap(expandToken);
+  } else if (typeof value === 'string' && value.trim()) {
+    raw = expandToken(value);
   } else {
-    tokens = [];
+    raw = [];
   }
   const seen = new Set();
-  return tokens.filter(k => {
+  return raw.filter(k => {
     const s = safeStr(k, STR_LIMITS.keyword);
     if (!s || seen.has(s)) return false;
     seen.add(s);

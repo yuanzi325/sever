@@ -370,7 +370,7 @@ function showConflictModal(){
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="detail-body" style="margin-top:14px">云端记忆库刚刚被别的端更新了。这次没有覆盖云端，你刚改的内容已经保存到本地备份和 JSON 下载里。你可以先刷新看看远端的版本，再决定怎么合并。</div>
-    <div class="detail-body" style="margin-top:8px;opacity:.6;font-size:.85em">注意：「覆盖非记忆字段」只覆盖 vault_state（日历、档案、bottles、diaries 等），不影响 public.memories 记忆库。如需同步记忆库，请用导入功能。</div>
+    <div class="detail-body" style="margin-top:8px;opacity:.6;font-size:.85em">注意：「覆盖非记忆字段」只覆盖 vault_state（日历、档案、bottles 等），不影响 public.memories 记忆库。如需同步记忆库，请用导入功能。</div>
     <div class="action-row">
       <button class="solid-btn" data-action="conflict-download">下载我的备份</button>
       <button class="solid-btn" data-action="conflict-force-save">覆盖非记忆字段</button>
@@ -1926,7 +1926,7 @@ async function doImport(mode){
           <p>导入文件包含 <strong>${importCount}</strong> 条记忆。</p>
           <p>远端当前有 <strong>${remoteActive}</strong> 条未归档记忆。</p>
           <p style="margin-top:10px">确认后，不在导入文件中的远端记忆将被<strong>软归档</strong>，导入文件里的记忆全部写入 / 更新到 public.memories。</p>
-          <p style="margin-top:8px;opacity:.6;font-size:.85em">bottles、diaries 等非记忆库字段会直接覆盖 vault_state。</p>
+          <p style="margin-top:8px;opacity:.6;font-size:.85em">bottles 等非记忆库字段会直接覆盖 vault_state。</p>
         </div>
         <div class="action-row" style="margin-top:16px">
           <button class="solid-btn" onclick="doImportOverwriteExecute()">确认覆盖</button>

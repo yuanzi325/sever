@@ -790,7 +790,7 @@ function calendarMoodColor(mood){ return CALENDAR_MOODS[mood] || '#D8C6A5'; }
 function inferCalendarMood(date){
   const noteMood = state.calendarNotes?.[date]?.mood;
   if (noteMood) return noteMood;
-  const moods = state.diaries.filter(d => d.date === date).flatMap(d => d.moods || []);
+  const moods = diaryMemories().filter(d => d.date === date).flatMap(d => d.moods || []);
   const raw = moods[0] || state.memories.find(m => m.layer === 'daily' && m.date === date)?.mood || '';
   const map = {开心:'开心', 兴奋:'开心', 感动:'重要', 平静:'平静', 撒娇:'平静', 难过:'低落', 委屈:'低落', 思念:'低落', 不安:'不安', 生气:'不安'};
   return map[raw] || '';
@@ -985,6 +985,7 @@ function dailySeed(){
 let floatMemCache = null;
 let floatMemDate = '';
 let memoryFormSubmitting = false;
+let diaryFormSubmitting = false;
 function randomFloatMemory(){
   if (floatMemDate === today() && floatMemCache) {
     const stillValid = state.memories.find(m => m.id === floatMemCache.id && ['treasure','core','daily'].includes(m.layer) && !m.resolved && !m._archived);
@@ -1222,9 +1223,13 @@ function memoryCard(m){
   `;
 }
 
+function diaryMemories(){
+  return state.memories.filter(m => m.layer === 'diary' && !m._archived);
+}
+
 function filteredDiaries(){
   const q = (diarySearchText || '').trim();
-  let list = state.diaries.slice();
+  let list = diaryMemories().slice();
   if (q) {
     list = list.filter(item => [item.title, item.content, item.date, item.author, ...(item.keywords || []), ...(item.moods || [])]
       .filter(Boolean)
@@ -1320,7 +1325,7 @@ function renderBottle(){
 }
 
 function computeStats(){
-  const byLayer = {core:0,daily:0,memo:0,health:0,treasure:0,diary:state.diaries.length,message:state.bottles.length};
+  const byLayer = {core:0,daily:0,memo:0,health:0,treasure:0,diary:0,message:state.bottles.length};
   const words = {core:0,daily:0,memo:0,health:0,treasure:0,diary:0,message:0};
   state.memories.forEach(m => {
     if (!isVisibleMemory(m)) return;
@@ -1329,7 +1334,6 @@ function computeStats(){
       words[m.layer] += (m.content || '').length;
     }
   });
-  state.diaries.forEach(d => { words.diary += (d.content || '').length; });
   state.bottles.forEach(b => { words.message += (b.content || '').length; });
   return {byLayer, words};
 }
@@ -1351,7 +1355,7 @@ function renderArchive(){
         <div class="stat-div"></div>
         <div><div class="stat-num">${state.memories.length}</div><div class="archive-stat-label">条记忆</div></div>
         <div class="stat-div"></div>
-        <div><div class="stat-num">${state.diaries.length}</div><div class="archive-stat-label">篇日记</div></div>
+        <div><div class="stat-num">${diaryMemories().length}</div><div class="archive-stat-label">篇日记</div></div>
       </div>
     </div>
 
@@ -1506,7 +1510,7 @@ function openMemoryDetail(id){
 }
 
 function openDiaryDetail(id){
-  const d = state.diaries.find(item => item.id === id); if (!d) return;
+  const d = diaryMemories().find(item => item.id === id); if (!d) return;
   const detailTags = (d.moods||[]).map(m => `<span class="mini-chip" style="color:${moodColor(m)}">${m}</span>`).join('');
   const keywordRow = (d.keywords||[]).length ? `<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:6px">${d.keywords.map(k => `<span class="mini-chip">${escapeHtml(k)}</span>`).join('')}</div>` : '';
   showModal(`
@@ -1636,7 +1640,7 @@ async function submitMemoryForm(id=''){
 }
 
 function openDiaryForm(id=''){
-  const d = normalizeDiary(id ? state.diaries.find(item => item.id === id) : {author:'小克',date:today(),title:'',content:'',moods:['平静'],keywords:[]});
+  const d = normalizeDiary(id ? diaryMemories().find(item => item.id === id) : {author:'小克',date:today(),title:'',content:'',moods:['平静'],keywords:[]});
   const selected = new Set(d.moods || []);
   showEditor(`
     <div class="editor-header"><button class="editor-back" onclick="closeEditor()">←</button><div><div class="modal-title">${id?'编辑日记':'新建日记'}</div></div></div>
@@ -1659,22 +1663,35 @@ function openDiaryForm(id=''){
 }
 function toggleDiaryMood(btn){ btn.classList.toggle('active'); }
 async function submitDiaryForm(id=''){
-  const record = normalizeDiary({
-    id: id || uid('d'),
+  if (diaryFormSubmitting) return;
+  diaryFormSubmitting = true;
+  const btn = document.querySelector('[data-action="submit-diary-form"]');
+  if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
+  const record = {
+    layer: 'diary',
     author: document.getElementById('df-author').value,
     date: document.getElementById('df-date').value || today(),
     title: document.getElementById('df-title').value.trim() || '未命名日记',
     moods: Array.from(document.querySelectorAll('.mood-chip.active')).map(el => el.dataset.mood),
     keywords: splitTokens(document.getElementById('df-keywords').value),
     content: document.getElementById('df-content').value.trim()
-  });
-  if (id) state.diaries = state.diaries.map(item => item.id === id ? record : item);
-  else state.diaries.push(record);
-  const btn = document.querySelector('[data-action="submit-diary-form"]');
-  if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
-  const r = await saveAndRender();
-  if (btn) { btn.disabled = false; btn.textContent = '保存'; }
-  if (r?.ok) { closeEditor(); showToast('日记已保存', null, false); }
+  };
+  try {
+    let saved;
+    if (id) {
+      saved = await apiPatchMemory(id, record);
+      state.memories = state.memories.map(item => item.id === id ? saved : item);
+    } else {
+      saved = await apiWriteMemory(record);
+      state.memories.unshift(saved);
+    }
+    renderAfterMemoryApiChange(); closeEditor(); showToast('日记已保存', null, false);
+  } catch(err) {
+    showToast(classifyApiError(err), null, false);
+  } finally {
+    diaryFormSubmitting = false;
+    if (btn) { btn.disabled = false; btn.textContent = '保存'; }
+  }
 }
 
 function openBottleForm(id=''){
@@ -1764,7 +1781,7 @@ function moduleExportData(module='all'){
   const map = {
     all: state,
     memories: state.memories,
-    diaries: state.diaries,
+    diaries: diaryMemories(),
     bottles: state.bottles,
     health: state.health,
     profile: {profile: state.profile, startDate: state.startDate, automation: state.automation}
@@ -1855,7 +1872,7 @@ async function doImport(mode){
         state.memories = await fetchAllMemoriesFromApi();
       } catch(e){ /* 刷新失败则保留当前内存 */ }
 
-      // --- bottles / diaries：沿用 vault_state 保存逻辑 ---
+      // --- bottles：沿用 vault_state 保存逻辑 ---
       let miscAdded = 0;
       if (payload.bottles && Array.isArray(payload.bottles)){
         const bottleIds = new Set(state.bottles.map(b => b.id));
@@ -1864,12 +1881,21 @@ async function doImport(mode){
         }
       }
       if (payload.diaries && Array.isArray(payload.diaries)){
-        const diaryKey = d => d.id || `${d.date || ''}|${d.author || ''}|${d.title || ''}`;
-        const existing = new Set(state.diaries.map(diaryKey));
+        const existingDiaryIds = new Set(diaryMemories().map(m => m.id));
         for (const dRaw of payload.diaries){
           const d = normalizeDiary(dRaw);
-          const key = diaryKey(d);
-          if (!existing.has(key)){ state.diaries.push(d); existing.add(key); miscAdded++; }
+          if (existingDiaryIds.has(d.id)) continue;
+          const origId = d.id;
+          const record = { ...d, layer: 'diary' };
+          if (!isValidUUID(origId)){ if (origId) record.legacy_id = origId; delete record.id; }
+          try {
+            const saved = await apiWriteMemory(record);
+            state.memories.unshift(saved);
+            existingDiaryIds.add(saved.id);
+            miscAdded++;
+          } catch(err){
+            if (err.code === 'no_token' || err.status === 401){ showToast('登录凭证失效，请重新登录', null, false); return; }
+          }
         }
       }
       if (miscAdded > 0) await persist();
@@ -2014,7 +2040,7 @@ function openDayDetail(date, monthOffset = 0){
   closeModal();
   const note = state.calendarNotes?.[date] || {mood: inferCalendarMood(date) || '平静', summary:''};
   const daily = state.memories.filter(m => m.layer === 'daily' && m.date === date);
-  const diaries = state.diaries.filter(d => d.date === date);
+  const diaries = diaryMemories().filter(d => d.date === date);
   showEditor(`
     <div class="editor-header"><button class="editor-back" data-action="return-to-calendar" data-arg="${monthOffset}">←</button><div><div class="modal-title">${escapeHtml(date)}</div></div></div>
     <div class="editor-main form-grid">
@@ -2446,12 +2472,23 @@ async function permanentlyDeleteMemory(id){
   }
 }
 async function deleteDiary(id){
-  const found = state.diaries.find(item => item.id === id); if (!found) return;
+  if (!lockMemoryAction(id)) return;
+  const found = diaryMemories().find(item => item.id === id);
+  if (!found){ unlockMemoryAction(id); return; }
   undoPayload = {type:'diary', data: clone(found)};
-  state.diaries = state.diaries.filter(item => item.id !== id);
-  const r = await saveAndRender(); closeModal();
-  if (r?.ok) showToast('已删除日记', () => restoreUndo(), true);
-  else showToast('删除失败，请检查网络', null, false);
+  showToast('正在归档...', null, false);
+  try {
+    const archived = await apiArchiveMemory(id);
+    const normalized = normalizeMemoryMeta(archived);
+    const idx = state.memories.findIndex(item => item.id === id);
+    if (idx !== -1) state.memories[idx] = normalized;
+    renderAfterMemoryApiChange(); closeModal();
+    showToast('已删除日记', () => restoreUndo(), true);
+  } catch(err) {
+    showToast(classifyApiError(err), null, false);
+  } finally {
+    unlockMemoryAction(id);
+  }
 }
 async function deleteBottle(id){
   const found = state.bottles.find(item => item.id === id); if (!found) return;
@@ -2483,7 +2520,23 @@ async function restoreUndo(){
     }
     return;
   }
-  if (payload.type === 'diary') state.diaries.unshift(payload.data);
+  if (payload.type === 'diary') {
+    const id = payload.data?.id;
+    if (!lockMemoryAction(id)) return;
+    showToast('正在撤销...', null, false);
+    try {
+      const restored = await apiRestoreMemory(id);
+      state.memories = state.memories.map(item => item.id === id ? restored : item);
+      if (undoPayload === payload) undoPayload = null;
+      renderAfterMemoryApiChange();
+      showToast('已撤销删除', null, false);
+    } catch(err) {
+      showToast(classifyApiError(err), null, false);
+    } finally {
+      unlockMemoryAction(id);
+    }
+    return;
+  }
   if (payload.type === 'bottle') state.bottles.unshift(payload.data);
   undoPayload = null;
   const r = await saveAndRender();

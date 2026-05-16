@@ -573,6 +573,7 @@ function normalizeDiary(diary = {}){
     id: safeId(base.id, 'd'),
     title: safeStr(base.title, STR_LIMITS.title),
     content: safeStr(base.content, STR_LIMITS.content),
+    today_snapshot: safeStr(base.today_snapshot, STR_LIMITS.summary),
     keywords: safeKeywords(base.keywords),
     moods: safeArray(base.moods, []).slice(0, MOODS_MAX).map(m => safeStr(m, 50)).filter(Boolean),
     author: safeStr(base.author, 50),
@@ -1521,6 +1522,7 @@ function openDiaryDetail(id){
     <div class="detail-meta">${detailTags}</div>
     ${keywordRow}
     <div class="detail-body" style="margin-top:14px">${escapeHtml(d.content)}</div>
+    ${d.today_snapshot ? `<div class="soft-card" style="margin-top:14px"><div class="section-label" style="margin-bottom:8px">今天的你</div><div class="detail-body">${escapeHtml(d.today_snapshot)}</div></div>` : ''}
     <div class="action-row">
       <button class="solid-btn" data-action="open-diary-form" data-id="${escapeHtml(d.id)}">编辑</button>
       <button class="danger-btn" data-action="delete-diary" data-id="${escapeHtml(d.id)}">删除</button>
@@ -1667,6 +1669,7 @@ async function submitDiaryForm(id=''){
   diaryFormSubmitting = true;
   const btn = document.querySelector('[data-action="submit-diary-form"]');
   if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
+  const existing = id ? diaryMemories().find(item => item.id === id) : null;
   const record = {
     layer: 'diary',
     author: document.getElementById('df-author').value,
@@ -1674,7 +1677,8 @@ async function submitDiaryForm(id=''){
     title: document.getElementById('df-title').value.trim() || '未命名日记',
     moods: Array.from(document.querySelectorAll('.mood-chip.active')).map(el => el.dataset.mood),
     keywords: splitTokens(document.getElementById('df-keywords').value),
-    content: document.getElementById('df-content').value.trim()
+    content: document.getElementById('df-content').value.trim(),
+    ...(existing?.today_snapshot ? { today_snapshot: existing.today_snapshot } : {})
   };
   try {
     let saved;
@@ -2051,7 +2055,7 @@ function openDayDetail(date, monthOffset = 0){
       </div>
       <label class="input-shell"><span class="input-label">当天摘要</span><textarea id="cal-summary" class="textarea-compact" placeholder="写一句这天最值得一眼看到的事。">${escapeHtml(note.summary || '')}</textarea></label>
       <div class="section"><div class="section-label">daily</div>${daily.length ? daily.map(m => `<div class="soft-card" style="margin-bottom:10px"><div class="small" style="color:var(--gold);margin-bottom:6px">${escapeHtml(m.title)}</div><div class="detail-body">${escapeHtml(m.content)}</div></div>`).join('') : '<div class="empty" style="padding:8px 0 18px">这天没有 daily 摘要。</div>'}</div>
-      <div class="section"><div class="section-label">日记</div>${diaries.length ? diaries.map(d => `<div class="soft-card" style="margin-bottom:10px"><div class="small" style="color:var(--gold);margin-bottom:6px">${escapeHtml(d.author)} · ${escapeHtml(d.title)}</div><div class="detail-body">${escapeHtml(d.content)}</div></div>`).join('') : '<div class="empty" style="padding:8px 0 18px">这天没有日记。</div>'}</div>
+      <div class="section"><div class="section-label">日记</div>${diaries.length ? diaries.map(d => `<div class="soft-card" style="margin-bottom:10px"><div class="small" style="color:var(--gold);margin-bottom:6px">${escapeHtml(d.author)} · ${escapeHtml(d.title)}</div><div class="detail-body">${escapeHtml(d.content)}</div>${d.today_snapshot ? `<div class="small muted" style="margin-top:6px">今天的你：${escapeHtml(d.today_snapshot)}</div>` : ''}</div>`).join('') : '<div class="empty" style="padding:8px 0 18px">这天没有日记。</div>'}</div>
     </div>
     <div class="editor-actions"><button class="solid-btn" data-action="save-calendar-note" data-id="${escapeHtml(date)}" data-arg="${monthOffset}">保存</button><button class="ghost-btn" data-action="return-to-calendar" data-arg="${monthOffset}">返回日历</button></div>
   `);

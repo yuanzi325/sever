@@ -974,7 +974,7 @@ function layerMeta(layer){ return LAYERS[layer] || {name:layer,color:'#D8C6A5',b
 function sortByDateDesc(arr, key='date'){ return [...arr].sort((a,b) => String(b[key]||'').localeCompare(String(a[key]||''))); }
 function unreadCount(){ return state.bottles.filter(b => !b.read && !b._archived).length; }
 function latestTodaySnapshot(){
-  const item = sortByDateDesc(state.memories.filter(m => m.layer === 'daily' && m.today_snapshot), 'date')[0];
+  const item = sortByDateDesc(state.memories.filter(m => ['daily','diary'].includes(m.layer) && m.today_snapshot), 'date')[0];
   return item?.today_snapshot || '今天的你还空着。等你手动写下一句，首页就会在第一眼看到它。';
 }
 function dailySeed(){
@@ -1572,7 +1572,7 @@ function openMemoryForm(id=''){
       </div>
       <label class="input-shell"><span class="input-label">心情</span><select id="mf-mood">${Object.keys(MOOD_COLORS).map(mood => `<option value="${mood}" ${m.mood===mood?'selected':''}>${mood}</option>`).join('')}</select></label>
       <label class="input-shell"><span class="input-label">关键词</span><textarea id="mf-keywords" class="textarea-compact" placeholder="支持中文逗号、英文逗号、顿号、分号、换行分隔。">${escapeHtml((m.keywords || []).join('，'))}</textarea></label>
-      <label class="input-shell" style="display:${m.layer==='daily'?'block':'none'}" id="today-shell"><span class="input-label">今天的你</span><textarea id="mf-today">${escapeHtml(m.today_snapshot || '')}</textarea></label>
+      <label class="input-shell" style="display:${['daily','diary'].includes(m.layer)?'block':'none'}" id="today-shell"><span class="input-label">今天的你</span><textarea id="mf-today">${escapeHtml(m.today_snapshot || '')}</textarea></label>
       <label class="input-shell" style="display:${m.layer==='treasure'?'block':'none'}" id="precious-shell"><span class="input-label">为什么珍贵</span><textarea id="mf-precious">${escapeHtml(m.why_precious || '')}</textarea></label>
       <label class="input-shell"><span class="input-label">正文</span><textarea id="mf-content" style="min-height:220px">${escapeHtml(m.content)}</textarea></label>
     </div>
@@ -1588,7 +1588,7 @@ function openMemoryForm(id=''){
       const subshell = document.getElementById('subshell');
       const subSelect = document.getElementById('mf-sub');
       subshell.style.display = val === 'core' ? 'block' : 'none';
-      document.getElementById('today-shell').style.display = val === 'daily' ? 'block' : 'none';
+      document.getElementById('today-shell').style.display = ['daily','diary'].includes(val) ? 'block' : 'none';
       if (val !== 'core' && subSelect) subSelect.value = '';
       document.getElementById('precious-shell').style.display = val === 'treasure' ? 'block' : 'none';
     });
@@ -1658,6 +1658,7 @@ function openDiaryForm(id=''){
         <div class="mood-pick">${Object.keys(MOOD_COLORS).map(mood => `<button type="button" class="mood-chip ${selected.has(mood)?'active':''}" data-mood="${mood}" onclick="toggleDiaryMood(this)">${mood}</button>`).join('')}</div>
       </div>
       <label class="input-shell"><span class="input-label">关键词</span><textarea id="df-keywords" class="textarea-compact" placeholder="支持中文逗号、英文逗号、顿号、分号、换行分隔。">${escapeHtml((d.keywords||[]).join('，'))}</textarea></label>
+      <label class="input-shell"><span class="input-label">今天的你</span><textarea id="df-today" class="textarea-compact" placeholder="一句话描述今天的状态，显示在首页和日历。">${escapeHtml(d.today_snapshot || '')}</textarea></label>
       <label class="input-shell"><span class="input-label">正文</span><textarea id="df-content" style="min-height:220px">${escapeHtml(d.content)}</textarea></label>
     </div>
     <div class="editor-actions"><button class="solid-btn" data-action="submit-diary-form" data-id="${escapeHtml(id)}">保存</button><button class="ghost-btn" onclick="closeEditor()">取消</button></div>
@@ -1669,7 +1670,6 @@ async function submitDiaryForm(id=''){
   diaryFormSubmitting = true;
   const btn = document.querySelector('[data-action="submit-diary-form"]');
   if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
-  const existing = id ? diaryMemories().find(item => item.id === id) : null;
   const record = {
     layer: 'diary',
     author: document.getElementById('df-author').value,
@@ -1677,8 +1677,8 @@ async function submitDiaryForm(id=''){
     title: document.getElementById('df-title').value.trim() || '未命名日记',
     moods: Array.from(document.querySelectorAll('.mood-chip.active')).map(el => el.dataset.mood),
     keywords: splitTokens(document.getElementById('df-keywords').value),
-    content: document.getElementById('df-content').value.trim(),
-    ...(existing?.today_snapshot ? { today_snapshot: existing.today_snapshot } : {})
+    today_snapshot: document.getElementById('df-today')?.value.trim() || '',
+    content: document.getElementById('df-content').value.trim()
   };
   try {
     let saved;

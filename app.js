@@ -970,6 +970,7 @@ function fmtDate(date){
 }
 function escapeHtml(str=''){ return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
 function moodColor(mood){ return MOOD_COLORS[mood] || '#D8C6A5'; }
+function getChordTag(item = {}){ return item?.raw?.chord_tag || item?.chord_tag || ''; }
 function layerMeta(layer){ return LAYERS[layer] || {name:layer,color:'#D8C6A5',bg:'#F8F3EE'}; }
 function sortByDateDesc(arr, key='date'){ return [...arr].sort((a,b) => String(b[key]||'').localeCompare(String(a[key]||''))); }
 function unreadCount(){ return state.bottles.filter(b => !b.read && !b._archived).length; }
@@ -1232,7 +1233,7 @@ function filteredDiaries(){
   const q = (diarySearchText || '').trim();
   let list = diaryMemories().slice();
   if (q) {
-    list = list.filter(item => [item.title, item.content, item.date, item.author, ...(item.keywords || []), ...(item.moods || [])]
+    list = list.filter(item => [item.title, item.content, item.date, item.author, getChordTag(item), ...(item.keywords || []), ...(item.moods || [])]
       .filter(Boolean)
       .some(v => String(v).includes(q)));
   }
@@ -1297,12 +1298,14 @@ function renderDiary(){
 function diaryCol(author, entry, bg){
   if (!entry) return `<div class="diary-col" style="background:${bg};opacity:.4"><div class="author">${author}</div><div class="diary-empty">—</div></div>`;
   const mood = (entry.moods || []).map(m => `<span class="mini-chip" style="background:rgba(255,253,251,.66);color:${moodColor(m)}">${m}</span>`).join('');
+  const chord = getChordTag(entry);
+  const chordChip = chord ? `<span class="mini-chip">♪ ${escapeHtml(chord)}</span>` : '';
   return `
     <div class="diary-col" style="background:${bg}" data-action="open-diary" data-id="${escapeHtml(entry.id)}">
       <div class="author">${author}</div>
       <div class="dtitle">${escapeHtml(entry.title)}</div>
       <div class="dcontent">${escapeHtml(entry.content)}</div>
-      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px">${mood}</div>
+      <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px">${mood}${chordChip}</div>
     </div>
   `;
 }
@@ -1513,7 +1516,8 @@ function openMemoryDetail(id){
 function openDiaryDetail(id){
   const d = diaryMemories().find(item => item.id === id); if (!d) return;
   const moodTags = (d.moods||[]).map(m => `<span class="mini-chip" style="color:${moodColor(m)}">${m}</span>`).join('');
-  const chordChip = d.raw?.chord_tag ? `<span class="mini-chip">♪ ${escapeHtml(d.raw.chord_tag)}</span>` : '';
+  const chord = getChordTag(d);
+  const chordChip = chord ? `<span class="mini-chip">♪ ${escapeHtml(chord)}</span>` : '';
   const detailTags = moodTags + chordChip;
   const keywordRow = (d.keywords||[]).length ? `<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:6px">${d.keywords.map(k => `<span class="mini-chip">${escapeHtml(k)}</span>`).join('')}</div>` : '';
   showModal(`
@@ -1673,7 +1677,7 @@ function openDiaryForm(id=''){
       </div>
       <label class="input-shell">
         <span class="input-label">和弦标记</span>
-        <input id="df-chord" placeholder="Fmaj9 → C/E → Am add9 → G6sus4 · 60bpm" value="${escapeHtml((d.raw && d.raw.chord_tag) || '')}">
+        <input id="df-chord" placeholder="Fmaj9 → C/E → Am add9 → G6sus4 · 60bpm" value="${escapeHtml(getChordTag(d))}">
       </label>
       <label class="input-shell"><span class="input-label">关键词</span><textarea id="df-keywords" class="textarea-compact" placeholder="支持中文逗号、英文逗号、顿号、分号、换行分隔。">${escapeHtml((d.keywords||[]).join('，'))}</textarea></label>
       <label class="input-shell"><span class="input-label">今天的你</span><textarea id="df-today" class="textarea-compact" placeholder="一句话描述今天的状态，显示在首页和日历。">${escapeHtml(d.today_snapshot || '')}</textarea></label>

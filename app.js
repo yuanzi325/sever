@@ -1485,7 +1485,8 @@ function openMemoryDetail(id){
   const m = state.memories.find(item => item.id === id); if (!m) return;
   if (changed) persistLocalCache(state);
   const meta = layerMeta(m.layer);
-  const detailTags = [meta.name, m.sub_layer ? CORE_SUBLAYERS[m.sub_layer] : '', m.mood || '', (m.layer === 'treasure' && m.raw?.chord_tag) ? `♪ ${m.raw.chord_tag}` : '', `importance ${m.importance}`, m.author || '']
+  const chord = getChordTag(m);
+  const detailTags = [meta.name, m.sub_layer ? CORE_SUBLAYERS[m.sub_layer] : '', m.mood || '', (m.layer === 'treasure' && chord) ? `♪ ${chord}` : '', `importance ${m.importance}`, m.author || '']
     .concat(m.pinned ? ['已钉选'] : [])
     .concat(m.resolved ? ['已解决'] : [])
     .filter(Boolean)
@@ -1577,7 +1578,7 @@ function openMemoryForm(id=''){
         <label class="input-shell"><span class="input-label">重要程度</span><select id="mf-importance">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}" ${Number(m.importance)===n?'selected':''}>${n}</option>`).join('')}</select></label>
       </div>
       <label class="input-shell"><span class="input-label">心情</span><select id="mf-mood">${Object.keys(MOOD_COLORS).map(mood => `<option value="${mood}" ${m.mood===mood?'selected':''}>${mood}</option>`).join('')}</select></label>
-      <label class="input-shell" id="chord-shell" style="display:${m.layer==='treasure'?'block':'none'}"><span class="input-label">和弦标记</span><input id="mf-chord" placeholder="Fmaj9 → C/E → Am add9 → G6sus4 · 60bpm" value="${escapeHtml((m.raw && m.raw.chord_tag) || '')}"></label>
+      <label class="input-shell" id="chord-shell" style="display:${m.layer==='treasure'?'block':'none'}"><span class="input-label">和弦标记</span><input id="mf-chord" placeholder="Fmaj9 → C/E → Am add9 → G6sus4 · 60bpm" value="${escapeHtml(getChordTag(m))}"></label>
       <label class="input-shell"><span class="input-label">关键词</span><textarea id="mf-keywords" class="textarea-compact" placeholder="支持中文逗号、英文逗号、顿号、分号、换行分隔。">${escapeHtml((m.keywords || []).join('，'))}</textarea></label>
       <label class="input-shell" style="display:${['daily','diary'].includes(m.layer)?'block':'none'}" id="today-shell"><span class="input-label">今天的你</span><textarea id="mf-today">${escapeHtml(m.today_snapshot || '')}</textarea></label>
       <label class="input-shell" style="display:${m.layer==='treasure'?'block':'none'}" id="precious-shell"><span class="input-label">为什么珍贵</span><textarea id="mf-precious">${escapeHtml(m.why_precious || '')}</textarea></label>

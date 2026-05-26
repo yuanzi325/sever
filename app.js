@@ -1243,7 +1243,7 @@ function filteredDiaries(){
 function filterMemoriesByQuery(list = [], q = ''){
   const keyword = String(q || '').trim();
   if (!keyword) return list.slice();
-  return list.filter(m => [m.title, m.content, m.why_precious, m.today_snapshot, m.sub_layer, (m.keywords || []).join(' ')]
+  return list.filter(m => [m.title, m.content, m.why_precious, m.today_snapshot, m.sub_layer, getChordTag(m), (m.keywords || []).join(' ')]
     .filter(Boolean)
     .join(' ')
     .includes(keyword));
@@ -1486,7 +1486,7 @@ function openMemoryDetail(id){
   if (changed) persistLocalCache(state);
   const meta = layerMeta(m.layer);
   const chord = getChordTag(m);
-  const detailTags = [meta.name, m.sub_layer ? CORE_SUBLAYERS[m.sub_layer] : '', m.mood || '', (m.layer === 'treasure' && chord) ? `♪ ${chord}` : '', `importance ${m.importance}`, m.author || '']
+  const detailTags = [meta.name, m.sub_layer ? CORE_SUBLAYERS[m.sub_layer] : '', m.mood || '', (['diary','treasure'].includes(m.layer) && chord) ? `♪ ${chord}` : '', `importance ${m.importance}`, m.author || '']
     .concat(m.pinned ? ['已钉选'] : [])
     .concat(m.resolved ? ['已解决'] : [])
     .filter(Boolean)
@@ -1578,7 +1578,7 @@ function openMemoryForm(id=''){
         <label class="input-shell"><span class="input-label">重要程度</span><select id="mf-importance">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}" ${Number(m.importance)===n?'selected':''}>${n}</option>`).join('')}</select></label>
       </div>
       <label class="input-shell"><span class="input-label">心情</span><select id="mf-mood">${Object.keys(MOOD_COLORS).map(mood => `<option value="${mood}" ${m.mood===mood?'selected':''}>${mood}</option>`).join('')}</select></label>
-      <label class="input-shell" id="chord-shell" style="display:${m.layer==='treasure'?'block':'none'}"><span class="input-label">和弦标记</span><input id="mf-chord" placeholder="Fmaj9 → C/E → Am add9 → G6sus4 · 60bpm" value="${escapeHtml(getChordTag(m))}"></label>
+      <label class="input-shell" id="chord-shell" style="display:${['diary','treasure'].includes(m.layer)?'block':'none'}"><span class="input-label">和弦标记</span><input id="mf-chord" placeholder="Fmaj9 → C/E → Am add9 → G6sus4 · 60bpm" value="${escapeHtml(getChordTag(m))}"></label>
       <label class="input-shell"><span class="input-label">关键词</span><textarea id="mf-keywords" class="textarea-compact" placeholder="支持中文逗号、英文逗号、顿号、分号、换行分隔。">${escapeHtml((m.keywords || []).join('，'))}</textarea></label>
       <label class="input-shell" style="display:${['daily','diary'].includes(m.layer)?'block':'none'}" id="today-shell"><span class="input-label">今天的你</span><textarea id="mf-today">${escapeHtml(m.today_snapshot || '')}</textarea></label>
       <label class="input-shell" style="display:${m.layer==='treasure'?'block':'none'}" id="precious-shell"><span class="input-label">为什么珍贵</span><textarea id="mf-precious">${escapeHtml(m.why_precious || '')}</textarea></label>
@@ -1600,7 +1600,7 @@ function openMemoryForm(id=''){
       if (val !== 'core' && subSelect) subSelect.value = '';
       document.getElementById('precious-shell').style.display = val === 'treasure' ? 'block' : 'none';
       const chordShell = document.getElementById('chord-shell');
-      if (chordShell) chordShell.style.display = val === 'treasure' ? 'block' : 'none';
+      if (chordShell) chordShell.style.display = ['diary','treasure'].includes(val) ? 'block' : 'none';
     });
   }, 0);
 }
@@ -1634,7 +1634,7 @@ async function submitMemoryForm(id=''){
     protected: base.pinned ? true : (isProtectedLayer(layer) ? true : !!base.protected && !['daily','memo'].includes(layer))
   });
   record.raw = record.raw || {};
-  if (layer === 'treasure') {
+  if (['diary','treasure'].includes(layer)) {
     const chordTag = (document.getElementById('mf-chord')?.value || '').trim();
     if (chordTag) {
       record.raw.chord_tag = chordTag;

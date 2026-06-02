@@ -389,3 +389,31 @@ body.theme-dark .import-dropzone.import-dragover{background:rgba(201,176,139,.08
 .archive-memory-card{cursor:pointer}
 body.theme-dark .link-count,
 body.theme-dark .archive-memory-summary{box-shadow:none}
+
+/* dark mode: fix mini-chip / tag text contrast */
+body.theme-dark .mini-chip,
+body.theme-dark .tag{color:var(--fog) !important}
+
+/* debug section */
+.dbg-section{margin-top:14px;border-radius:12px;border:1px solid var(--line);overflow:hidden}
+.dbg-summary{list-style:none;padding:9px 14px;font-size:10px;letter-spacing:2px;color:var(--gold);cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;background:transparent}
+.dbg-summary::-webkit-details-marker{display:none}
+.dbg-summary::before{content:'▸';font-size:9px;display:inline-block;transition:transform .2s ease}
+details[open].dbg-section .dbg-summary::before{transform:rotate(90deg)}
+.dbg-grid{display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;padding:10px 14px 12px;border-top:1px solid var(--line)}
+.dbg-key{font-size:9px;letter-spacing:.5px;color:rgba(126,118,116,.5);font-family:Georgia,serif;align-self:center;white-space:nowrap}
+.dbg-val-cell{display:flex;align-items:center}
+.dbg-badge{font-size:9px;padding:2px 8px;border-radius:999px;display:inline-flex;align-items:center;letter-spacing:.3px}
+.dbg-yes{background:rgba(143,184,154,.2);color:#5A8C6A}
+.dbg-no{background:rgba(126,118,116,.1);color:rgba(126,118,116,.65)}
+.dbg-na{font-size:10px;color:rgba(126,118,116,.32);font-style:italic}
+.dbg-txt{font-size:10px;color:var(--fog)}
+
+/* debug section: dark mode */
+body.theme-dark .dbg-section{border-color:rgba(201,176,139,.12)}
+body.theme-dark .dbg-grid{border-top-color:rgba(201,176,139,.12)}
+body.theme-dark .dbg-key{color:rgba(184,176,172,.38)}
+body.theme-dark .dbg-yes{background:rgba(143,184,154,.13);color:#8FCA9A}
+body.theme-dark .dbg-no{background:rgba(255,255,255,.06);color:rgba(184,176,172,.6)}
+body.theme-dark .dbg-na{color:rgba(184,176,172,.32)}
+body.theme-dark .dbg-txt{color:var(--fog)}

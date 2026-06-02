@@ -1480,6 +1480,29 @@ function renderAll(){
   updateThemeToggle();
 }
 
+function memoryDebugSection(m){
+  const na = '<span class="dbg-na">N/A</span>';
+  const bool = (v, t, f) => {
+    if (v == null) return na;
+    return v ? `<span class="dbg-badge dbg-yes">${t}</span>` : `<span class="dbg-badge dbg-no">${f}</span>`;
+  };
+  const txt = v => (v == null || v === '') ? na : `<span class="dbg-txt">${escapeHtml(String(v))}</span>`;
+  const fmtDate = v => v ? txt(String(v).replace('T',' ').split('.')[0]) : na;
+  const rows = [
+    ['resolved',         bool(m.resolved,                   '已解决', '未解决')],
+    ['digested',         bool(m.digested != null ? !!m.digested : null, '已消化', '未消化')],
+    ['protected',        bool(m.protected,                  '受保护', '可编辑')],
+    ['archived',         bool(m._archived,                  '已归档', '未归档')],
+    ['activation_count', txt(m.activation_count)],
+    ['last_active',      fmtDate(m.last_active)],
+    ['bucket',           txt(m.bucket)],
+    ['layer',            txt(m.layer)],
+    ['source',           txt(m.source)],
+    ['confidence',       m.confidence != null ? txt(m.confidence) : na],
+  ];
+  return `<details class="dbg-section"><summary class="dbg-summary">状态与调试</summary><div class="dbg-grid">${rows.map(([k,v])=>`<span class="dbg-key">${k}</span><span class="dbg-val-cell">${v}</span>`).join('')}</div></details>`;
+}
+
 function openMemoryDetail(id){
   const changed = touchMemory(id, true);
   const m = state.memories.find(item => item.id === id); if (!m) return;
@@ -1502,6 +1525,7 @@ function openMemoryDetail(id){
     <div class="detail-body" style="margin-top:14px">${escapeHtml(m.content)}</div>
     ${m.today_snapshot ? `<div class="soft-card" style="margin-top:14px"><div class="section-label" style="margin-bottom:8px">今天的你</div><div class="detail-body">${escapeHtml(m.today_snapshot)}</div></div>` : ''}
     ${m.why_precious ? `<div class="soft-card" style="margin-top:14px"><div class="section-label" style="margin-bottom:8px">为什么珍贵</div><div class="detail-body">${escapeHtml(m.why_precious)}</div></div>` : ''}
+    ${memoryDebugSection(m)}
     <div class="action-row">
       ${m._archived ? `<button class="solid-btn" data-action="restore-archived-memory" data-id="${escapeHtml(m.id)}">移出归档</button>` : `<button class="solid-btn" data-action="open-memory-form" data-id="${escapeHtml(m.id)}">编辑</button>`}
       ${!m._archived ? `<button class="ghost-btn" data-action="toggle-resolved" data-id="${escapeHtml(m.id)}">${m.resolved ? '重新激活' : '标记已解决'}</button>` : ''}

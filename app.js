@@ -1520,6 +1520,31 @@ function memoryDebugSection(m){
   return `<details class="dbg-section"><summary class="dbg-summary">状态与调试</summary><div class="dbg-grid">${rows.map(([k,v])=>`<span class="dbg-key">${k}</span><span class="dbg-val-cell">${v}</span>`).join('')}</div></details>`;
 }
 
+function renderRingComments(memoryId, m){
+  const comments = Array.isArray(m.raw?.ring_comments) ? m.raw.ring_comments : [];
+  const rows = comments.map(c => `
+    <div class="ring-comment">
+      <div class="ring-comment-body">${escapeHtml(c.content || '')}</div>
+      <div class="ring-comment-meta">
+        <span>${escapeHtml(c.author || '')}</span>
+        <span>${escapeHtml(String(c.created_at || '').replace('T',' ').split('.')[0])}</span>
+        <button class="ring-delete-btn" data-action="delete-ring-comment" data-id="${escapeHtml(memoryId)}" data-arg="${escapeHtml(c.id)}">×</button>
+      </div>
+    </div>`).join('');
+  return `<div class="soft-card" style="margin-top:14px">
+    <div class="section-label" style="margin-bottom:4px">年轮</div>
+    <div class="input-helper" style="margin-bottom:${comments.length?'0':'10px'}">旧记忆被重新理解时，写在这里。</div>
+    ${rows}
+    <div class="ring-input-row">
+      <label class="input-shell"><textarea id="ring-comment-input" class="textarea-compact" placeholder="写下新的理解…"></textarea></label>
+      <div class="ring-input-footer">
+        <select id="ring-comment-author" class="ring-author-sel">${AUTHOR_OPTIONS.map(a=>`<option value="${a}">${a}</option>`).join('')}</select>
+        <button class="solid-btn" data-action="add-ring-comment" data-id="${escapeHtml(memoryId)}">添加年轮</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function openMemoryDetail(id){
   const changed = touchMemory(id, true);
   const m = state.memories.find(item => item.id === id); if (!m) return;
@@ -1542,6 +1567,7 @@ function openMemoryDetail(id){
     <div class="detail-body" style="margin-top:14px">${escapeHtml(m.content)}</div>
     ${m.today_snapshot ? `<div class="soft-card" style="margin-top:14px"><div class="section-label" style="margin-bottom:8px">今天的你</div><div class="detail-body">${escapeHtml(m.today_snapshot)}</div></div>` : ''}
     ${m.why_precious ? `<div class="soft-card" style="margin-top:14px"><div class="section-label" style="margin-bottom:8px">为什么珍贵</div><div class="detail-body">${escapeHtml(m.why_precious)}</div></div>` : ''}
+    ${renderRingComments(id, m)}
     ${memoryDebugSection(m)}
     <div class="action-row">
       ${m._archived ? `<button class="solid-btn" data-action="restore-archived-memory" data-id="${escapeHtml(m.id)}">移出归档</button>` : `<button class="solid-btn" data-action="open-memory-form" data-id="${escapeHtml(m.id)}">编辑</button>`}
@@ -1553,6 +1579,46 @@ function openMemoryDetail(id){
       <button class="ghost-btn" onclick="closeModal()">关闭</button>
     </div>
   `);
+}
+
+async function addRingComment(id){
+  if (!lockMemoryAction(id)) return;
+  const m = state.memories.find(item => item.id === id);
+  if (!m){ unlockMemoryAction(id); return; }
+  const content = (document.getElementById('ring-comment-input')?.value || '').trim();
+  if (!content){ unlockMemoryAction(id); showToast('请输入内容', null, false); return; }
+  const author = document.getElementById('ring-comment-author')?.value || (AUTHOR_OPTIONS[0] || '');
+  const newComment = { id: uid('rc'), created_at: nowIso(), author, content };
+  const existing = Array.isArray(m.raw?.ring_comments) ? m.raw.ring_comments : [];
+  const nextRaw = { ...m.raw, ring_comments: [...existing, newComment] };
+  try {
+    const saved = await apiPatchMemory(id, { raw: nextRaw });
+    state.memories = state.memories.map(item => item.id === id ? saved : item);
+    renderAfterMemoryApiChange();
+    openMemoryDetail(id);
+  } catch(err){
+    showToast(classifyApiError(err), null, false);
+  } finally {
+    unlockMemoryAction(id);
+  }
+}
+
+async function deleteRingComment(id, commentId){
+  if (!lockMemoryAction(id)) return;
+  const m = state.memories.find(item => item.id === id);
+  if (!m){ unlockMemoryAction(id); return; }
+  const existing = Array.isArray(m.raw?.ring_comments) ? m.raw.ring_comments : [];
+  const nextRaw = { ...m.raw, ring_comments: existing.filter(c => c.id !== commentId) };
+  try {
+    const saved = await apiPatchMemory(id, { raw: nextRaw });
+    state.memories = state.memories.map(item => item.id === id ? saved : item);
+    renderAfterMemoryApiChange();
+    openMemoryDetail(id);
+  } catch(err){
+    showToast(classifyApiError(err), null, false);
+  } finally {
+    unlockMemoryAction(id);
+  }
 }
 
 function openDiaryDetail(id){
@@ -2769,6 +2835,8 @@ document.body.addEventListener('click', (e) => {
     case 'open-period-form': openPeriodForm(id); break;
     case 'submit-period-form': submitPeriodForm(id); break;
     case 'delete-period': deletePeriod(id); break;
+    case 'add-ring-comment': addRingComment(id); break;
+    case 'delete-ring-comment': deleteRingComment(id, arg); break;
     case 'conflict-download': downloadConflictBackup(); break;
     case 'conflict-force-save': forceSaveConflictBackup(); break;
     case 'conflict-reload': reloadFromRemote(); break;

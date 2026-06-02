@@ -1482,17 +1482,25 @@ function renderAll(){
 
 function memoryDebugSection(m){
   const na = '<span class="dbg-na">N/A</span>';
+  const boolVal = v => {
+    if (v == null || v === '') return null;
+    if (v === true  || v === 'true'  || v === 1 || v === '1') return true;
+    if (v === false || v === 'false' || v === 0 || v === '0') return false;
+    return !!v;
+  };
   const bool = (v, t, f) => {
-    if (v == null) return na;
-    return v ? `<span class="dbg-badge dbg-yes">${t}</span>` : `<span class="dbg-badge dbg-no">${f}</span>`;
+    const b = boolVal(v);
+    if (b == null) return na;
+    return b ? `<span class="dbg-badge dbg-yes">${t}</span>` : `<span class="dbg-badge dbg-no">${f}</span>`;
   };
   const txt = v => (v == null || v === '') ? na : `<span class="dbg-txt">${escapeHtml(String(v))}</span>`;
   const fmtDate = v => v ? txt(String(v).replace('T',' ').split('.')[0]) : na;
+  const archived = m._archived ?? m.archived;
   const rows = [
-    ['resolved',         bool(m.resolved,                   '已解决', '未解决')],
-    ['digested',         bool(m.digested != null ? !!m.digested : null, '已消化', '未消化')],
-    ['protected',        bool(m.protected,                  '受保护', '可编辑')],
-    ['archived',         bool(m._archived,                  '已归档', '未归档')],
+    ['resolved',         bool(m.resolved,  '已解决', '未解决')],
+    ['digested',         bool(m.digested,  '已消化', '未消化')],
+    ['protected',        bool(m.protected, '受保护', '可编辑')],
+    ['archived',         bool(archived,    '已归档', '未归档')],
     ['activation_count', txt(m.activation_count)],
     ['last_active',      fmtDate(m.last_active)],
     ['bucket',           txt(m.bucket)],

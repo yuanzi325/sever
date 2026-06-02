@@ -423,8 +423,9 @@ body.theme-dark .dbg-txt{color:var(--fog)}
 .param-toggle:hover{border-color:rgba(216,198,165,.25)}
 .param-arrow{transition:transform .2s ease;font-size:11px;opacity:.7}
 .param-toggle-open .param-arrow{transform:rotate(180deg)}
-.param-body{padding:0 12px 12px;flex-direction:column;gap:8px;display:none}
+.param-body{padding:8px 12px 14px;flex-direction:column;gap:8px;display:none}
 .param-body.param-open{display:flex}
+.param-body>:first-child{margin-top:2px}
 .slider-grid{display:flex;flex-direction:column;gap:4px}
 .slider-row{display:flex;align-items:center;gap:8px}
 .slider-row .input-label{width:68px;min-width:68px;margin:0;line-height:1.8}

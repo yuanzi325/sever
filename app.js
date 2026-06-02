@@ -1497,18 +1497,25 @@ function memoryDebugSection(m){
   };
   const txt = v => (v == null || v === '') ? na : `<span class="dbg-txt">${escapeHtml(String(v))}</span>`;
   const fmtDate = v => v ? txt(String(v).replace('T',' ').split('.')[0]) : na;
+  const trunc = (v, n=80) => { const s = String(v ?? ''); return s === '' ? na : `<span class="dbg-txt">${escapeHtml(s.slice(0, n))}${s.length > n ? '…' : ''}</span>`; };
   const archived = m._archived ?? m.archived;
   const rows = [
     ['resolved',         bool(m.resolved,  '已解决', '未解决')],
     ['digested',         bool(m.digested,  '已消化', '未消化')],
     ['protected',        bool(m.protected, '受保护', '可编辑')],
     ['archived',         bool(archived,    '已归档', '未归档')],
+    ['anchor',           bool(m.anchor,    '已锚定', '未锚定')],
     ['activation_count', txt(m.activation_count)],
     ['last_active',      fmtDate(m.last_active)],
     ['bucket',           txt(m.bucket)],
     ['layer',            txt(m.layer)],
     ['source',           txt(m.source)],
     ['confidence',       m.confidence != null ? txt(m.confidence) : na],
+    ['valence',          m.valence   != null ? txt(m.valence)   : na],
+    ['arousal',          m.arousal   != null ? txt(m.arousal)   : na],
+    ['intimacy',         m.intimacy  != null ? txt(m.intimacy)  : na],
+    ['safety',           m.safety    != null ? txt(m.safety)    : na],
+    ['texture',          trunc(m.texture)],
   ];
   return `<details class="dbg-section"><summary class="dbg-summary">状态与调试</summary><div class="dbg-grid">${rows.map(([k,v])=>`<span class="dbg-key">${k}</span><span class="dbg-val-cell">${v}</span>`).join('')}</div></details>`;
 }

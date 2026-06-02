@@ -461,6 +461,8 @@ function splitTokens(text=''){
 }
 
 function moodToVA(mood=''){ return MOOD_VA_MAP[mood] || {valence:0.5, arousal:0.3}; }
+const num01 = (v, fb) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : fb; };
+const toBool = v => v === true || v === 1 || v === 'true' || v === '1';
 function nowIso(){ return new Date().toISOString(); }
 function parseDateLike(value=''){
   if (!value) return null;
@@ -1619,15 +1621,15 @@ function openMemoryForm(id=''){
         <div class="param-body" id="mf-param-body">
           <label class="input-shell"><span class="input-label">bucket</span><input id="mf-bucket" placeholder="eg: relationship / archive / trip" value="${escapeHtml(m.bucket || '')}"></label>
           <div class="check-row">
-            <label class="check-item"><input type="checkbox" id="mf-anchor" ${m.anchor ? 'checked' : ''}><span>anchor（长期锚点）</span></label>
-            <label class="check-item"><input type="checkbox" id="mf-protected" ${m.protected ? 'checked' : ''}><span>protected（保护）</span></label>
+            <label class="check-item"><input type="checkbox" id="mf-anchor" ${toBool(m.anchor) ? 'checked' : ''}><span>anchor（长期锚点）</span></label>
+            <label class="check-item"><input type="checkbox" id="mf-protected" ${toBool(m.protected) ? 'checked' : ''}><span>protected（保护）</span></label>
           </div>
           <div class="slider-grid">
-            <div class="slider-row"><span class="input-label">valence</span><input type="range" id="mf-valence" min="0" max="1" step="0.05" value="${m.valence.toFixed(2)}" data-manual="0" oninput="document.getElementById('mf-valence-val').textContent=parseFloat(this.value).toFixed(2);this.dataset.manual='1'"><span class="slider-val" id="mf-valence-val">${m.valence.toFixed(2)}</span></div>
-            <div class="slider-row"><span class="input-label">arousal</span><input type="range" id="mf-arousal" min="0" max="1" step="0.05" value="${m.arousal.toFixed(2)}" data-manual="0" oninput="document.getElementById('mf-arousal-val').textContent=parseFloat(this.value).toFixed(2);this.dataset.manual='1'"><span class="slider-val" id="mf-arousal-val">${m.arousal.toFixed(2)}</span></div>
-            <div class="slider-row"><span class="input-label">confidence</span><input type="range" id="mf-confidence" min="0" max="1" step="0.05" value="${(m.confidence ?? 0.7).toFixed(2)}" oninput="document.getElementById('mf-confidence-val').textContent=parseFloat(this.value).toFixed(2)"><span class="slider-val" id="mf-confidence-val">${(m.confidence ?? 0.7).toFixed(2)}</span></div>
-            <div class="slider-row"><span class="input-label">intimacy</span><input type="range" id="mf-intimacy" min="0" max="1" step="0.05" value="${(m.intimacy ?? 0.5).toFixed(2)}" oninput="document.getElementById('mf-intimacy-val').textContent=parseFloat(this.value).toFixed(2)"><span class="slider-val" id="mf-intimacy-val">${(m.intimacy ?? 0.5).toFixed(2)}</span></div>
-            <div class="slider-row"><span class="input-label">safety</span><input type="range" id="mf-safety" min="0" max="1" step="0.05" value="${(m.safety ?? 0.5).toFixed(2)}" oninput="document.getElementById('mf-safety-val').textContent=parseFloat(this.value).toFixed(2)"><span class="slider-val" id="mf-safety-val">${(m.safety ?? 0.5).toFixed(2)}</span></div>
+            <div class="slider-row"><span class="input-label">valence</span><input type="range" id="mf-valence" min="0" max="1" step="0.05" value="${num01(m.valence, 0.5).toFixed(2)}" data-manual="0" oninput="document.getElementById('mf-valence-val').textContent=parseFloat(this.value).toFixed(2);this.dataset.manual='1'"><span class="slider-val" id="mf-valence-val">${num01(m.valence, 0.5).toFixed(2)}</span></div>
+            <div class="slider-row"><span class="input-label">arousal</span><input type="range" id="mf-arousal" min="0" max="1" step="0.05" value="${num01(m.arousal, 0.3).toFixed(2)}" data-manual="0" oninput="document.getElementById('mf-arousal-val').textContent=parseFloat(this.value).toFixed(2);this.dataset.manual='1'"><span class="slider-val" id="mf-arousal-val">${num01(m.arousal, 0.3).toFixed(2)}</span></div>
+            <div class="slider-row"><span class="input-label">confidence</span><input type="range" id="mf-confidence" min="0" max="1" step="0.05" value="${num01(m.confidence, 0.7).toFixed(2)}" oninput="document.getElementById('mf-confidence-val').textContent=parseFloat(this.value).toFixed(2)"><span class="slider-val" id="mf-confidence-val">${num01(m.confidence, 0.7).toFixed(2)}</span></div>
+            <div class="slider-row"><span class="input-label">intimacy</span><input type="range" id="mf-intimacy" min="0" max="1" step="0.05" value="${num01(m.intimacy, 0.5).toFixed(2)}" oninput="document.getElementById('mf-intimacy-val').textContent=parseFloat(this.value).toFixed(2)"><span class="slider-val" id="mf-intimacy-val">${num01(m.intimacy, 0.5).toFixed(2)}</span></div>
+            <div class="slider-row"><span class="input-label">safety</span><input type="range" id="mf-safety" min="0" max="1" step="0.05" value="${num01(m.safety, 0.5).toFixed(2)}" oninput="document.getElementById('mf-safety-val').textContent=parseFloat(this.value).toFixed(2)"><span class="slider-val" id="mf-safety-val">${num01(m.safety, 0.5).toFixed(2)}</span></div>
           </div>
           <label class="input-shell"><span class="input-label">texture（语言纹理）</span><textarea id="mf-texture" class="textarea-compact" placeholder="轻一点 · 短句 · 不说教…">${escapeHtml(m.texture || '')}</textarea></label>
         </div>

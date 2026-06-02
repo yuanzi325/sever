@@ -1614,6 +1614,24 @@ function openMemoryForm(id=''){
       <label class="input-shell"><span class="input-label">关键词</span><textarea id="mf-keywords" class="textarea-compact" placeholder="支持中文逗号、英文逗号、顿号、分号、换行分隔。">${escapeHtml((m.keywords || []).join('，'))}</textarea></label>
       <label class="input-shell" style="display:${['daily','diary'].includes(m.layer)?'block':'none'}" id="today-shell"><span class="input-label">今天的你</span><textarea id="mf-today">${escapeHtml(m.today_snapshot || '')}</textarea></label>
       <label class="input-shell" style="display:${m.layer==='treasure'?'block':'none'}" id="precious-shell"><span class="input-label">为什么珍贵</span><textarea id="mf-precious">${escapeHtml(m.why_precious || '')}</textarea></label>
+      <div class="param-section">
+        <button type="button" id="param-toggle-btn" class="param-toggle">记忆参数 <span class="param-arrow">▾</span></button>
+        <div class="param-body" id="mf-param-body">
+          <label class="input-shell"><span class="input-label">bucket</span><input id="mf-bucket" placeholder="eg: relationship / archive / trip" value="${escapeHtml(m.bucket || '')}"></label>
+          <div class="check-row">
+            <label class="check-item"><input type="checkbox" id="mf-anchor" ${m.anchor ? 'checked' : ''}><span>anchor（长期锚点）</span></label>
+            <label class="check-item"><input type="checkbox" id="mf-protected" ${m.protected ? 'checked' : ''}><span>protected（保护）</span></label>
+          </div>
+          <div class="slider-grid">
+            <div class="slider-row"><span class="input-label">valence</span><input type="range" id="mf-valence" min="0" max="1" step="0.05" value="${m.valence.toFixed(2)}" data-manual="0" oninput="document.getElementById('mf-valence-val').textContent=parseFloat(this.value).toFixed(2);this.dataset.manual='1'"><span class="slider-val" id="mf-valence-val">${m.valence.toFixed(2)}</span></div>
+            <div class="slider-row"><span class="input-label">arousal</span><input type="range" id="mf-arousal" min="0" max="1" step="0.05" value="${m.arousal.toFixed(2)}" data-manual="0" oninput="document.getElementById('mf-arousal-val').textContent=parseFloat(this.value).toFixed(2);this.dataset.manual='1'"><span class="slider-val" id="mf-arousal-val">${m.arousal.toFixed(2)}</span></div>
+            <div class="slider-row"><span class="input-label">confidence</span><input type="range" id="mf-confidence" min="0" max="1" step="0.05" value="${(m.confidence ?? 0.7).toFixed(2)}" oninput="document.getElementById('mf-confidence-val').textContent=parseFloat(this.value).toFixed(2)"><span class="slider-val" id="mf-confidence-val">${(m.confidence ?? 0.7).toFixed(2)}</span></div>
+            <div class="slider-row"><span class="input-label">intimacy</span><input type="range" id="mf-intimacy" min="0" max="1" step="0.05" value="${(m.intimacy ?? 0.5).toFixed(2)}" oninput="document.getElementById('mf-intimacy-val').textContent=parseFloat(this.value).toFixed(2)"><span class="slider-val" id="mf-intimacy-val">${(m.intimacy ?? 0.5).toFixed(2)}</span></div>
+            <div class="slider-row"><span class="input-label">safety</span><input type="range" id="mf-safety" min="0" max="1" step="0.05" value="${(m.safety ?? 0.5).toFixed(2)}" oninput="document.getElementById('mf-safety-val').textContent=parseFloat(this.value).toFixed(2)"><span class="slider-val" id="mf-safety-val">${(m.safety ?? 0.5).toFixed(2)}</span></div>
+          </div>
+          <label class="input-shell"><span class="input-label">texture（语言纹理）</span><textarea id="mf-texture" class="textarea-compact" placeholder="轻一点 · 短句 · 不说教…">${escapeHtml(m.texture || '')}</textarea></label>
+        </div>
+      </div>
       <label class="input-shell"><span class="input-label">正文</span><textarea id="mf-content" style="min-height:220px">${escapeHtml(m.content)}</textarea></label>
     </div>
     <div class="editor-actions">
@@ -1634,6 +1652,26 @@ function openMemoryForm(id=''){
       const chordShell = document.getElementById('chord-shell');
       if (chordShell) chordShell.style.display = ['diary','treasure'].includes(val) ? 'block' : 'none';
     });
+    const paramToggleBtn = document.getElementById('param-toggle-btn');
+    const paramBodyEl = document.getElementById('mf-param-body');
+    paramToggleBtn?.addEventListener('click', () => {
+      paramBodyEl?.classList.toggle('param-open');
+      paramToggleBtn.classList.toggle('param-toggle-open');
+    });
+    const moodSelEl = document.getElementById('mf-mood');
+    moodSelEl?.addEventListener('change', () => {
+      const va2 = moodToVA(moodSelEl.value);
+      const vEl = document.getElementById('mf-valence');
+      const aEl = document.getElementById('mf-arousal');
+      if (vEl && vEl.dataset.manual !== '1') {
+        vEl.value = va2.valence.toFixed(2);
+        document.getElementById('mf-valence-val').textContent = va2.valence.toFixed(2);
+      }
+      if (aEl && aEl.dataset.manual !== '1') {
+        aEl.value = va2.arousal.toFixed(2);
+        document.getElementById('mf-arousal-val').textContent = va2.arousal.toFixed(2);
+      }
+    });
   }, 0);
 }
 
@@ -1647,6 +1685,17 @@ async function submitMemoryForm(id=''){
   const layer = document.getElementById('mf-layer').value;
   const mood = document.getElementById('mf-mood').value;
   const va = moodToVA(mood);
+  const _sv = (el, fb) => { const v = parseFloat(el?.value); return isNaN(v) ? fb : v; };
+  const userValence = _sv(document.getElementById('mf-valence'), va.valence);
+  const userArousal = _sv(document.getElementById('mf-arousal'), va.arousal);
+  const protectedEl = document.getElementById('mf-protected');
+  const userProtected = protectedEl ? protectedEl.checked : !!base.protected;
+  const bucket = (document.getElementById('mf-bucket')?.value || '').trim();
+  const anchor = !!(document.getElementById('mf-anchor')?.checked);
+  const confidence = _sv(document.getElementById('mf-confidence'), base.confidence ?? 0.7);
+  const intimacy = _sv(document.getElementById('mf-intimacy'), base.intimacy ?? 0.5);
+  const safety = _sv(document.getElementById('mf-safety'), base.safety ?? 0.5);
+  const texture = (document.getElementById('mf-texture')?.value || '').trim();
   const record = normalizeMemoryMeta({
     ...base,
     id: id || base.id || uid('m'),
@@ -1661,9 +1710,15 @@ async function submitMemoryForm(id=''){
     author: document.getElementById('mf-author').value,
     today_snapshot: document.getElementById('mf-today')?.value.trim() || '',
     why_precious: document.getElementById('mf-precious')?.value.trim() || '',
-    valence: va.valence,
-    arousal: va.arousal,
-    protected: base.pinned ? true : (isProtectedLayer(layer) ? true : !!base.protected && !['daily','memo'].includes(layer))
+    valence: userValence,
+    arousal: userArousal,
+    protected: base.pinned ? true : (isProtectedLayer(layer) ? true : userProtected),
+    bucket,
+    anchor,
+    confidence,
+    intimacy,
+    safety,
+    texture,
   });
   record.raw = record.raw || {};
   if (['diary','treasure'].includes(layer)) {

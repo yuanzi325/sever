@@ -1685,7 +1685,7 @@ function openMemoryForm(id=''){
         <label class="input-shell"><span class="input-label">重要程度</span><select id="mf-importance">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}" ${Number(m.importance)===n?'selected':''}>${n}</option>`).join('')}</select></label>
       </div>
       <label class="input-shell"><span class="input-label">心情</span><select id="mf-mood">${Object.keys(MOOD_COLORS).map(mood => `<option value="${mood}" ${m.mood===mood?'selected':''}>${mood}</option>`).join('')}</select></label>
-      <label class="input-shell" id="chord-shell" style="display:${['diary','treasure'].includes(m.layer)?'block':'none'}"><span class="input-label">记忆和弦</span><input id="mf-chord" placeholder="Fmaj9 → C/E → Am add9 → G6sus4 · 60bpm" value="${escapeHtml(getChordTag(m))}"><span class="input-helper">用音乐化方式标记这段记忆的情绪走向。</span></label>
+      <label class="input-shell" id="chord-shell" style="display:${['diary','treasure'].includes(m.layer)?'block':'none'}"><span class="input-label">记忆和弦</span><input id="mf-chord" placeholder="Fmaj9 → C/E → Am add9 → G6sus4 · 60bpm" value="${escapeHtml(getChordTag(m))}"><span class="input-helper" id="mf-chord-helper" style="display:${getChordTag(m)?'none':''}">用音乐化方式标记这段记忆的情绪走向。</span></label>
       <label class="input-shell"><span class="input-label">关键词</span><textarea id="mf-keywords" class="textarea-compact" placeholder="支持中文逗号、英文逗号、顿号、分号、换行分隔。">${escapeHtml((m.keywords || []).join('，'))}</textarea></label>
       <label class="input-shell" style="display:${['daily','diary'].includes(m.layer)?'block':'none'}" id="today-shell"><span class="input-label">今天的你</span><textarea id="mf-today">${escapeHtml(m.today_snapshot || '')}</textarea></label>
       <label class="input-shell" style="display:${m.layer==='treasure'?'block':'none'}" id="precious-shell"><span class="input-label">为什么珍贵</span><textarea id="mf-precious">${escapeHtml(m.why_precious || '')}</textarea></label>
@@ -1747,6 +1747,13 @@ function openMemoryForm(id=''){
         document.getElementById('mf-arousal-val').textContent = va2.arousal.toFixed(2);
       }
     });
+    const mfChordInput = document.getElementById('mf-chord');
+    const mfChordHelper = document.getElementById('mf-chord-helper');
+    if (mfChordInput && mfChordHelper) {
+      mfChordInput.addEventListener('input', () => {
+        mfChordHelper.style.display = mfChordInput.value.trim() ? 'none' : '';
+      });
+    }
   }, 0);
 }
 
@@ -1841,7 +1848,7 @@ function openDiaryForm(id=''){
       <label class="input-shell">
         <span class="input-label">记忆和弦</span>
         <input id="df-chord" placeholder="Fmaj9 → C/E → Am add9 → G6sus4 · 60bpm" value="${escapeHtml(getChordTag(d))}">
-        <span class="input-helper">用音乐化方式标记这段记忆的情绪走向。</span>
+        <span class="input-helper" id="df-chord-helper" style="display:${getChordTag(d)?'none':''}">用音乐化方式标记这段记忆的情绪走向。</span>
       </label>
       <label class="input-shell"><span class="input-label">关键词</span><textarea id="df-keywords" class="textarea-compact" placeholder="支持中文逗号、英文逗号、顿号、分号、换行分隔。">${escapeHtml((d.keywords||[]).join('，'))}</textarea></label>
       <label class="input-shell"><span class="input-label">今天的你</span><textarea id="df-today" class="textarea-compact" placeholder="一句话描述今天的状态，显示在首页和日历。">${escapeHtml(d.today_snapshot || '')}</textarea></label>
@@ -1849,6 +1856,15 @@ function openDiaryForm(id=''){
     </div>
     <div class="editor-actions"><button class="solid-btn" data-action="submit-diary-form" data-id="${escapeHtml(id)}">保存</button><button class="ghost-btn" onclick="closeEditor()">取消</button></div>
   `);
+  setTimeout(() => {
+    const dfChordInput = document.getElementById('df-chord');
+    const dfChordHelper = document.getElementById('df-chord-helper');
+    if (dfChordInput && dfChordHelper) {
+      dfChordInput.addEventListener('input', () => {
+        dfChordHelper.style.display = dfChordInput.value.trim() ? 'none' : '';
+      });
+    }
+  }, 0);
 }
 function toggleDiaryMood(btn){ btn.classList.toggle('active'); }
 async function submitDiaryForm(id=''){

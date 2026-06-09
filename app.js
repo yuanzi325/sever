@@ -1855,8 +1855,16 @@ function resultStatusOf(r){
 function applyCommitResults(batch, data, mode){
   const list = Array.isArray(data?.results) ? data.results
     : (Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []));
+  // 权威键是后端返回的 result.index（对应本次提交数组的位置），不依赖数组顺序。
+  // batch 就是这次实际发给后端的候选数组，所以 index 与 batch 下标对齐。
+  // 缺 index 时（异常/旧后端）才退回顺序兜底。
+  const resultByIndex = new Map();
+  list.forEach((r, i) => {
+    const idx = (r && Number.isInteger(r.index)) ? r.index : i;
+    if (!resultByIndex.has(idx)) resultByIndex.set(idx, r);
+  });
   const items = batch.map((c, i) => {
-    const r = list[i] || {};
+    const r = resultByIndex.get(i) || {};
     const status = resultStatusOf(r);
     if (mode === 'commit' && COMMIT_SUCCESS_STATUSES.includes(status)){
       c._submitted = true;
@@ -1865,11 +1873,11 @@ function applyCommitResults(batch, data, mode){
     c._result = { status, mode };
     return {
       cid: c._cid,
-      kind: c.kind,
+      kind: r.kind || c.kind,
       title: c.title || c.target_memory_hint || '(无标题)',
       status,
-      target_memory_id: r.target_memory_id || c.target_memory_id || '',
-      memory_id: r.memory_id || r.id || '',
+      target_memory_id: c.target_memory_id || '',
+      ref_id: r.memory_id || r.comment_id || r.id || '',
       message: r.message || r.error || r.detail || ''
     };
   });
@@ -2013,7 +2021,7 @@ function renderImportResults(){
     const hi = (it.status === 'needs_target') ? 'res-hi' : (it.status === 'error' || it.status === 'invalid' ? 'res-flag' : '');
     const extra = it.status === 'needs_target' ? '<div class="res-hint">请填写 target_memory_id 后重新 dry-run</div>'
       : (it.message ? `<div class="res-hint">${escapeHtml(it.message)}</div>` : '');
-    const idTxt = it.memory_id ? `<span class="res-id">#${escapeHtml(String(it.memory_id).slice(0,8))}</span>` : '';
+    const idTxt = it.ref_id ? `<span class="res-id">#${escapeHtml(String(it.ref_id).slice(0,8))}</span>` : '';
     return `<div class="res-row ${hi}">
       <span class="commit-pill ${meta.cls}">${meta.label}</span>
       ${importBadge(it.kind)}

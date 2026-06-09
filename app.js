@@ -260,6 +260,35 @@ async function apiDeleteMemoryPermanently(id){
   return resp.json();
 }
 
+// 导入候选：薄薄包一层现有 REST 约定（沿用 /api/ + Bearer），后端对应
+// memory_import_candidate_extract / memory_import_candidate_commit 两个 MCP 工具。
+const IMPORT_EXTRACT_PATH = window.IMPORT_EXTRACT_PATH || '/api/import/candidates/extract';
+const IMPORT_COMMIT_PATH = window.IMPORT_COMMIT_PATH || '/api/import/candidates/commit';
+
+async function apiImportCandidateExtract(payload){
+  const token = getFrontendAccessToken();
+  if (!token){ const e = new Error('Not authenticated'); e.code = 'no_token'; throw e; }
+  const resp = await fetch(MEMORY_API_BASE + IMPORT_EXTRACT_PATH, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!resp.ok){ const e = new Error('apiImportCandidateExtract failed: ' + resp.status); e.status = resp.status; throw e; }
+  return resp.json();
+}
+
+async function apiImportCandidateCommit(payload){
+  const token = getFrontendAccessToken();
+  if (!token){ const e = new Error('Not authenticated'); e.code = 'no_token'; throw e; }
+  const resp = await fetch(MEMORY_API_BASE + IMPORT_COMMIT_PATH, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!resp.ok){ const e = new Error('apiImportCandidateCommit failed: ' + resp.status); e.status = resp.status; throw e; }
+  return resp.json();
+}
+
 function classifyApiError(err){
   if (!err) return '未知错误';
   if (err.code === 'no_token') return '请先登录，未检测到登录凭证';
@@ -1189,6 +1218,7 @@ function renderMemory(){
     </div>
     <div class="toolbar">
       <button class="toolbar-btn primary" onclick="openMemoryForm()">新建记录</button>
+      <button class="toolbar-btn" data-action="open-import-panel">导入候选</button>
     </div>
     <div class="search-shell">
       <span class="search-label">搜索</span>
@@ -1576,6 +1606,7 @@ function openMemoryDetail(id){
       ${m._archived
         ? `<button class="danger-btn" data-action="open-permanent-delete-memory-confirm" data-id="${escapeHtml(m.id)}">删除</button>`
         : `<button class="ghost-btn" data-action="archive-memory" data-id="${escapeHtml(m.id)}">归档</button>`}
+      ${!m._archived ? `<button class="ghost-btn" data-action="open-import-panel-target" data-id="${escapeHtml(m.id)}">导入候选</button>` : ''}
       <button class="ghost-btn" onclick="closeModal()">关闭</button>
     </div>
   `);
@@ -1619,6 +1650,461 @@ async function deleteRingComment(id, commentId){
   } finally {
     unlockMemoryAction(id);
   }
+}
+
+/* ============================================================
+   导入候选审查面板（右侧抽屉 MVP）
+   - 不写后端逻辑，只调 extract / commit 两个 REST 包装。
+   - 三段：A 输入 / B 候选列表 / C 提交。
+   ============================================================ */
+const IMPORT_KINDS = ['memory','comment','preference','project','diary','ignore'];
+const IMPORT_KIND_LABEL = {
+  memory:'记忆', comment:'年轮', preference:'偏好', project:'项目', diary:'日记', ignore:'忽略'
+};
+const IMPORT_PROFILES = ['shared','rowan','arion','all'];
+const IMPORT_LAYER_OPTIONS = ['', 'core','daily','memo','health','treasure','diary'];
+const COMMIT_STATUS_META = {
+  would_create:{label:'将创建', cls:'st-plan'},
+  created:{label:'已创建', cls:'st-ok'},
+  merged:{label:'已合并', cls:'st-ok'},
+  would_comment:{label:'将写年轮', cls:'st-plan'},
+  commented:{label:'已写年轮', cls:'st-ok'},
+  needs_target:{label:'缺少目标', cls:'st-warn'},
+  invalid:{label:'无效/忽略', cls:'st-muted'},
+  error:{label:'错误', cls:'st-error'}
+};
+const COMMIT_SUCCESS_STATUSES = ['created','merged','commented'];
+
+const importState = {
+  open:false,
+  input:{ text:'', source:'', profile:'shared', chunk_chars:6000, max_candidates:50 },
+  candidates:[],
+  merge:true,
+  defaultTargetId:'',
+  loading:{ extract:false, dry:false, commit:false },
+  error:'',
+  results:null,          // { mode:'dry'|'commit', items:[...] }
+  hasDryRun:false,       // 是否存在一次成功 dry-run
+  dryRunStale:false      // 候选自上次 dry-run 后被改动
+};
+
+function importBusy(){ return importState.loading.extract || importState.loading.dry || importState.loading.commit; }
+
+function normalizeImportCandidate(raw = {}){
+  const c = raw || {};
+  let kw = c.keywords;
+  if (Array.isArray(kw)) kw = kw.map(x => String(x).trim()).filter(Boolean);
+  else if (typeof kw === 'string') kw = kw.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
+  else kw = [];
+  let kind = String(c.kind || 'memory').toLowerCase();
+  if (!IMPORT_KINDS.includes(kind)) kind = 'memory';
+  let conf = c.confidence;
+  conf = (conf === null || conf === undefined || conf === '') ? null : Number(conf);
+  if (!Number.isFinite(conf)) conf = null;
+  return {
+    _cid: uid('cand'),
+    _ignored: false,
+    _submitted: false,
+    _result: null,
+    _showRaw: false,
+    kind,
+    suggested_layer: c.suggested_layer || c.layer || '',
+    importance: clampNum(c.importance, 1, 10, 3),
+    confidence: conf,
+    title: c.title || '',
+    content: c.content || '',
+    keywords: kw,
+    reason: c.reason || '',
+    target_memory_hint: c.target_memory_hint || '',
+    target_memory_id: c.target_memory_id || '',
+    raw_excerpt: c.raw_excerpt || '',
+    source: c.source || importState.input.source || ''
+  };
+}
+
+function candidateToPayload(c){
+  const out = {};
+  Object.keys(c).forEach(k => { if (!k.startsWith('_')) out[k] = c[k]; });
+  return out;
+}
+
+// 进入待提交批次的候选：未被本地忽略、未提交。kind=ignore 仍会送出（后端返回 invalid，不阻塞）。
+function importBatchCandidates(){
+  return importState.candidates.filter(c => !c._ignored && !c._submitted);
+}
+
+function markDryRunStale(){
+  importState.dryRunStale = true;
+}
+
+function ensureImportDrawer(){
+  let backdrop = document.getElementById('import-drawer-backdrop');
+  if (backdrop) return backdrop;
+  backdrop = document.createElement('div');
+  backdrop.className = 'drawer-backdrop';
+  backdrop.id = 'import-drawer-backdrop';
+  backdrop.innerHTML = `<aside class="import-drawer" id="import-drawer" role="dialog" aria-modal="true" aria-label="导入候选审查"><div class="import-drawer-body" id="import-drawer-body"></div></aside>`;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener('click', e => { if (e.target === backdrop) closeImportPanel(); });
+  return backdrop;
+}
+
+function openImportPanel(defaultTargetId = ''){
+  closeModal();
+  ensureImportDrawer();
+  importState.open = true;
+  importState.defaultTargetId = defaultTargetId || '';
+  if (!importState.input.source) importState.input.source = 'import-' + today();
+  rerenderImport();
+  document.getElementById('import-drawer-backdrop').classList.add('show');
+  document.body.classList.add('drawer-open');
+}
+
+function closeImportPanel(){
+  if (importBusy()) return;
+  importState.open = false;
+  const backdrop = document.getElementById('import-drawer-backdrop');
+  if (backdrop) backdrop.classList.remove('show');
+  document.body.classList.remove('drawer-open');
+}
+
+function rerenderImport(){
+  const body = document.getElementById('import-drawer-body');
+  if (body) body.innerHTML = renderImportPanel();
+}
+
+/* ---- 字段更新（文本类不触发重渲染，避免输入丢焦点） ---- */
+function findCandidate(cid){ return importState.candidates.find(c => c._cid === cid); }
+
+function updateImportInput(field, value){
+  if (field === 'chunk_chars' || field === 'max_candidates') importState.input[field] = value;
+  else importState.input[field] = value;
+}
+function updateCandidateField(cid, field, value){
+  const c = findCandidate(cid); if (!c) return;
+  if (field === 'keywords') c.keywords = String(value).split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
+  else if (field === 'importance') c.importance = clampNum(value, 1, 10, c.importance);
+  else c[field] = value;
+  markDryRunStale();
+}
+function updateCandidateKind(cid, value){
+  const c = findCandidate(cid); if (!c) return;
+  c.kind = IMPORT_KINDS.includes(value) ? value : 'memory';
+  markDryRunStale();
+  rerenderImport();
+}
+function useCurrentAsTarget(cid){
+  const c = findCandidate(cid); if (!c) return;
+  c.target_memory_id = importState.defaultTargetId || '';
+  markDryRunStale();
+  rerenderImport();
+}
+function toggleCandidateIgnored(cid){
+  const c = findCandidate(cid); if (!c) return;
+  c._ignored = !c._ignored;
+  markDryRunStale();
+  rerenderImport();
+}
+function deleteCandidate(cid){
+  importState.candidates = importState.candidates.filter(c => c._cid !== cid);
+  markDryRunStale();
+  rerenderImport();
+}
+function toggleCandidateRaw(cid){
+  const c = findCandidate(cid); if (!c) return;
+  c._showRaw = !c._showRaw;
+  rerenderImport();
+}
+function setImportMerge(value){ importState.merge = !!value; markDryRunStale(); }
+
+/* ---- 抽取 ---- */
+async function runImportExtract(){
+  if (importBusy()) return;
+  const text = (importState.input.text || '').trim();
+  if (!text){ importState.error = '请先粘贴聊天记录或文本'; rerenderImport(); return; }
+  importState.loading.extract = true;
+  importState.error = '';
+  rerenderImport();
+  const payload = { text };
+  if (importState.input.source) payload.source = importState.input.source;
+  if (importState.input.profile) payload.profile = importState.input.profile;
+  const cc = Number(importState.input.chunk_chars); if (Number.isFinite(cc) && cc > 0) payload.chunk_chars = cc;
+  const mc = Number(importState.input.max_candidates); if (Number.isFinite(mc) && mc > 0) payload.max_candidates = mc;
+  try {
+    const data = await apiImportCandidateExtract(payload);
+    const list = Array.isArray(data?.candidates) ? data.candidates
+      : (Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []));
+    importState.candidates = list.map(normalizeImportCandidate);
+    importState.results = null;
+    importState.hasDryRun = false;
+    importState.dryRunStale = false;
+    if (!importState.candidates.length) importState.error = '没有抽到候选，可以调整文本或参数再试。';
+  } catch(err){
+    importState.error = classifyApiError(err) + '（抽取候选失败）';
+  } finally {
+    importState.loading.extract = false;
+    rerenderImport();
+  }
+}
+
+/* ---- 结果归并：把后端 results 映射回候选 ---- */
+function resultStatusOf(r){
+  const raw = String(r?.status || r?.action || r?.result || r?.outcome || '').toLowerCase();
+  return COMMIT_STATUS_META[raw] ? raw : (raw || 'error');
+}
+function applyCommitResults(batch, data, mode){
+  const list = Array.isArray(data?.results) ? data.results
+    : (Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []));
+  // 权威键是后端返回的 result.index（对应本次提交数组的位置），不依赖数组顺序。
+  // batch 就是这次实际发给后端的候选数组，所以 index 与 batch 下标对齐。
+  // 缺 index 时（异常/旧后端）才退回顺序兜底。
+  const resultByIndex = new Map();
+  list.forEach((r, i) => {
+    const idx = (r && Number.isInteger(r.index)) ? r.index : i;
+    if (!resultByIndex.has(idx)) resultByIndex.set(idx, r);
+  });
+  const items = batch.map((c, i) => {
+    const r = resultByIndex.get(i) || {};
+    const status = resultStatusOf(r);
+    if (mode === 'commit' && COMMIT_SUCCESS_STATUSES.includes(status)){
+      c._submitted = true;
+      c._ignored = false;
+    }
+    c._result = { status, mode };
+    return {
+      cid: c._cid,
+      kind: r.kind || c.kind,
+      title: c.title || c.target_memory_hint || '(无标题)',
+      status,
+      target_memory_id: c.target_memory_id || '',
+      ref_id: r.memory_id || r.comment_id || r.id || '',
+      message: r.message || r.error || r.detail || ''
+    };
+  });
+  importState.results = { mode, items };
+}
+
+/* ---- dry-run 预览 ---- */
+async function runImportDryRun(){
+  if (importBusy()) return;
+  const batch = importBatchCandidates();
+  if (!batch.length){ importState.error = '没有可预览的候选'; rerenderImport(); return; }
+  importState.loading.dry = true;
+  importState.error = '';
+  rerenderImport();
+  try {
+    const data = await apiImportCandidateCommit({
+      candidates: batch.map(candidateToPayload),
+      dry_run: true,
+      merge: importState.merge
+    });
+    applyCommitResults(batch, data, 'dry');
+    importState.hasDryRun = true;
+    importState.dryRunStale = false;
+  } catch(err){
+    importState.error = classifyApiError(err) + '（dry-run 失败）';
+  } finally {
+    importState.loading.dry = false;
+    rerenderImport();
+  }
+}
+
+/* ---- 正式提交（dry_run=false） ---- */
+async function runImportCommit(){
+  if (importBusy()) return;
+  if (!importState.hasDryRun || importState.dryRunStale){
+    importState.error = '请先 dry-run 预览，确认无误后再提交。';
+    rerenderImport();
+    return;
+  }
+  const batch = importBatchCandidates();
+  if (!batch.length){ importState.error = '没有待提交的候选'; rerenderImport(); return; }
+  const needTargets = batch.filter(c => c.kind === 'comment' && !String(c.target_memory_id || '').trim());
+  const warn = needTargets.length ? `有 ${needTargets.length} 条年轮候选还没填目标记忆，将返回 needs_target。\n` : '';
+  if (!window.confirm(`${warn}确认把 ${batch.length} 条候选正式写入记忆库？`)) return;
+  importState.loading.commit = true;
+  importState.error = '';
+  rerenderImport();
+  try {
+    const data = await apiImportCandidateCommit({
+      candidates: batch.map(candidateToPayload),
+      dry_run: false,
+      merge: importState.merge
+    });
+    applyCommitResults(batch, data, 'commit');
+    // 写库后强制重新 dry-run 才能再次提交剩余候选
+    importState.hasDryRun = false;
+    importState.dryRunStale = true;
+    const okCount = importState.results.items.filter(it => COMMIT_SUCCESS_STATUSES.includes(it.status)).length;
+    // 刷新底层记忆列表，让新写入的记忆/年轮立即可见
+    try {
+      const fresh = await fetchAllMemoriesFromApi();
+      if (Array.isArray(fresh) && fresh.length){ state.memories = fresh; renderAfterMemoryApiChange(); }
+    } catch(e){}
+    if (okCount) showToast(`已提交 ${okCount} 条候选`, null, false);
+  } catch(err){
+    importState.error = classifyApiError(err) + '（提交失败）';
+  } finally {
+    importState.loading.commit = false;
+    rerenderImport();
+  }
+}
+
+/* ---- 渲染 ---- */
+function importBadge(kind){
+  return `<span class="cand-kind k-${kind}">${IMPORT_KIND_LABEL[kind] || kind}</span>`;
+}
+function renderImportCandidate(c){
+  const isComment = c.kind === 'comment';
+  const needTarget = isComment && !String(c.target_memory_id || '').trim();
+  const res = c._result;
+  const resBadge = res ? `<span class="commit-pill ${COMMIT_STATUS_META[res.status]?.cls || ''}">${COMMIT_STATUS_META[res.status]?.label || res.status}</span>` : '';
+  const confTxt = (c.confidence !== null && c.confidence !== undefined) ? `conf ${(+c.confidence).toFixed(2)}` : '';
+  const metaChips = [
+    c.suggested_layer ? `层 ${LAYERS[c.suggested_layer]?.name || c.suggested_layer}` : '',
+    `imp ${c.importance}`,
+    confTxt
+  ].filter(Boolean).map(t => `<span class="cand-meta-chip">${escapeHtml(t)}</span>`).join('');
+  const kindOptions = IMPORT_KINDS.map(k => `<option value="${k}" ${c.kind===k?'selected':''}>${IMPORT_KIND_LABEL[k]}</option>`).join('');
+  const layerOptions = IMPORT_LAYER_OPTIONS.map(l => `<option value="${l}" ${c.suggested_layer===l?'selected':''}>${l ? (LAYERS[l]?.name || l) : '（不指定）'}</option>`).join('');
+  const impOptions = [1,2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${Number(c.importance)===n?'selected':''}>${n}</option>`).join('');
+  return `
+  <div class="cand ${c._ignored?'is-ignored':''} ${c._submitted?'is-submitted':''} ${needTarget?'need-target':''}">
+    <div class="cand-head">
+      ${importBadge(c.kind)}
+      ${resBadge}
+      ${c._submitted ? '<span class="commit-pill st-ok">已提交</span>' : ''}
+      ${c._ignored ? '<span class="commit-pill st-muted">已忽略</span>' : ''}
+      <div class="cand-meta-row">${metaChips}</div>
+    </div>
+    <label class="cand-field"><span>标题</span>
+      <input class="cand-input" value="${escapeHtml(c.title)}" oninput="updateCandidateField('${c._cid}','title',this.value)"></label>
+    <label class="cand-field"><span>内容</span>
+      <textarea class="cand-input cand-textarea" oninput="updateCandidateField('${c._cid}','content',this.value)">${escapeHtml(c.content)}</textarea></label>
+    <div class="cand-grid">
+      <label class="cand-field"><span>kind</span>
+        <select class="cand-input" onchange="updateCandidateKind('${c._cid}',this.value)">${kindOptions}</select></label>
+      <label class="cand-field"><span>层 suggested_layer</span>
+        <select class="cand-input" onchange="updateCandidateField('${c._cid}','suggested_layer',this.value)">${layerOptions}</select></label>
+      <label class="cand-field"><span>importance</span>
+        <select class="cand-input" onchange="updateCandidateField('${c._cid}','importance',this.value)">${impOptions}</select></label>
+      <label class="cand-field"><span>source</span>
+        <input class="cand-input" value="${escapeHtml(c.source)}" oninput="updateCandidateField('${c._cid}','source',this.value)"></label>
+    </div>
+    <label class="cand-field"><span>keywords（逗号/空格分隔）</span>
+      <input class="cand-input" value="${escapeHtml((c.keywords||[]).join(', '))}" oninput="updateCandidateField('${c._cid}','keywords',this.value)"></label>
+    ${isComment ? `
+    <div class="cand-target ${needTarget?'warn':''}">
+      <label class="cand-field"><span>target_memory_id（年轮目标）${needTarget?'<em>· 必填，否则 needs_target</em>':''}</span>
+        <input class="cand-input" value="${escapeHtml(c.target_memory_id)}" placeholder="目标记忆 id" oninput="updateCandidateField('${c._cid}','target_memory_id',this.value)"></label>
+      ${importState.defaultTargetId ? `<button class="mini-btn" data-action="import-use-current" data-id="${c._cid}">用当前记忆作为年轮目标</button>` : ''}
+    </div>` : ''}
+    ${c.reason ? `<div class="cand-aux"><span class="cand-aux-k">reason</span> ${escapeHtml(c.reason)}</div>` : ''}
+    ${c.target_memory_hint ? `<div class="cand-aux"><span class="cand-aux-k">hint</span> ${escapeHtml(c.target_memory_hint)}</div>` : ''}
+    ${c.raw_excerpt ? `
+      <button class="cand-raw-toggle" data-action="import-toggle-raw" data-id="${c._cid}">${c._showRaw?'收起 raw_excerpt ▲':'展开 raw_excerpt ▼'}</button>
+      ${c._showRaw ? `<pre class="cand-raw">${escapeHtml(c.raw_excerpt)}</pre>` : ''}` : ''}
+    <div class="cand-actions">
+      <button class="mini-btn" data-action="import-toggle-ignore" data-id="${c._cid}">${c._ignored?'恢复':'忽略'}</button>
+      <button class="mini-btn danger" data-action="import-delete-cand" data-id="${c._cid}">删除</button>
+    </div>
+  </div>`;
+}
+
+function renderImportResults(){
+  const r = importState.results;
+  if (!r || !r.items.length) return '';
+  const order = ['error','needs_target','invalid','would_create','would_comment','created','merged','commented'];
+  const sorted = [...r.items].sort((a,b) => order.indexOf(a.status) - order.indexOf(b.status));
+  const rows = sorted.map(it => {
+    const meta = COMMIT_STATUS_META[it.status] || {label:it.status, cls:'st-error'};
+    const hi = (it.status === 'needs_target') ? 'res-hi' : (it.status === 'error' || it.status === 'invalid' ? 'res-flag' : '');
+    const extra = it.status === 'needs_target' ? '<div class="res-hint">请填写 target_memory_id 后重新 dry-run</div>'
+      : (it.message ? `<div class="res-hint">${escapeHtml(it.message)}</div>` : '');
+    const idTxt = it.ref_id ? `<span class="res-id">#${escapeHtml(String(it.ref_id).slice(0,8))}</span>` : '';
+    return `<div class="res-row ${hi}">
+      <span class="commit-pill ${meta.cls}">${meta.label}</span>
+      ${importBadge(it.kind)}
+      <span class="res-title">${escapeHtml(it.title)}</span>
+      ${idTxt}
+      ${extra}
+    </div>`;
+  }).join('');
+  const counts = {};
+  r.items.forEach(it => { counts[it.status] = (counts[it.status]||0)+1; });
+  const summary = Object.keys(counts).map(s => `${(COMMIT_STATUS_META[s]?.label)||s} ${counts[s]}`).join(' · ');
+  return `
+    <div class="import-results">
+      <div class="import-results-head">
+        <span class="section-label" style="margin:0">${r.mode==='dry'?'dry-run 预览':'提交结果'}</span>
+        ${importState.dryRunStale && r.mode==='dry' ? '<span class="stale-tag">已过期，请重新 dry-run</span>' : ''}
+      </div>
+      <div class="res-summary">${escapeHtml(summary)}</div>
+      ${rows}
+    </div>`;
+}
+
+function renderImportPanel(){
+  const i = importState.input;
+  const profileOptions = IMPORT_PROFILES.map(p => `<option value="${p}" ${i.profile===p?'selected':''}>${p}</option>`).join('');
+  const cands = importState.candidates;
+  const batch = importBatchCandidates();
+  const submitDisabled = importBusy() || !batch.length || !importState.hasDryRun || importState.dryRunStale;
+  const dryDisabled = importBusy() || !batch.length;
+
+  // B 区
+  let listHtml;
+  if (importState.loading.extract){
+    listHtml = '<div class="import-state-box">正在抽取候选…</div>';
+  } else if (!cands.length){
+    listHtml = '<div class="import-state-box empty">还没有候选。粘贴文本后点「抽取候选」。</div>';
+  } else {
+    listHtml = cands.map(renderImportCandidate).join('');
+  }
+
+  return `
+  <div class="import-top">
+    <div>
+      <div class="import-title">导入候选 · 审查工作台</div>
+      <div class="import-sub">粘贴 → 抽取 → 编辑 → dry-run → 提交。dry-run 不写库。</div>
+    </div>
+    <button class="close-btn" data-action="import-close" aria-label="关闭">✕</button>
+  </div>
+
+  ${importState.error ? `<div class="import-error">${escapeHtml(importState.error)}</div>` : ''}
+
+  <section class="import-sec">
+    <div class="section-label">A · 输入</div>
+    <label class="cand-field"><span>聊天记录 / Markdown / 纯文本</span>
+      <textarea class="cand-input import-text" placeholder="把要整理的内容粘贴到这里…" oninput="updateImportInput('text',this.value)">${escapeHtml(i.text)}</textarea></label>
+    <div class="cand-grid">
+      <label class="cand-field"><span>source</span>
+        <input class="cand-input" value="${escapeHtml(i.source)}" oninput="updateImportInput('source',this.value)"></label>
+      <label class="cand-field"><span>profile</span>
+        <select class="cand-input" onchange="updateImportInput('profile',this.value)">${profileOptions}</select></label>
+      <label class="cand-field"><span>chunk_chars</span>
+        <input class="cand-input" type="number" min="500" value="${escapeHtml(String(i.chunk_chars))}" oninput="updateImportInput('chunk_chars',this.value)"></label>
+      <label class="cand-field"><span>max_candidates</span>
+        <input class="cand-input" type="number" min="1" value="${escapeHtml(String(i.max_candidates))}" oninput="updateImportInput('max_candidates',this.value)"></label>
+    </div>
+    <button class="solid-btn" data-action="import-extract" ${importState.loading.extract?'disabled':''}>${importState.loading.extract?'抽取中…':'抽取候选'}</button>
+  </section>
+
+  <section class="import-sec">
+    <div class="section-label">B · 候选列表 ${cands.length?`<span class="count-tag">${batch.length}/${cands.length} 待提交</span>`:''}</div>
+    <div class="cand-list">${listHtml}</div>
+  </section>
+
+  <section class="import-sec import-commit">
+    <div class="section-label">C · 提交</div>
+    <label class="merge-row"><input type="checkbox" ${importState.merge?'checked':''} onchange="setImportMerge(this.checked)"> 全局 merge（合并相近记忆）</label>
+    <div class="commit-btn-row">
+      <button class="ghost-btn" data-action="import-dryrun" ${dryDisabled?'disabled':''}>${importState.loading.dry?'预览中…':'dry-run 预览'}</button>
+      <button class="solid-btn" data-action="import-commit" ${submitDisabled?'disabled':''}>${importState.loading.commit?'提交中…':'提交已确认候选'}</button>
+    </div>
+    ${(!importState.hasDryRun || importState.dryRunStale) && batch.length ? '<div class="commit-hint">提交前需先完成一次 dry-run；候选改动后会要求重新预览。</div>' : ''}
+    ${renderImportResults()}
+  </section>`;
 }
 
 function openDiaryDetail(id){
@@ -2853,6 +3339,16 @@ document.body.addEventListener('click', (e) => {
     case 'delete-period': deletePeriod(id); break;
     case 'add-ring-comment': addRingComment(id); break;
     case 'delete-ring-comment': deleteRingComment(id, arg); break;
+    case 'open-import-panel': openImportPanel(); break;
+    case 'open-import-panel-target': openImportPanel(id); break;
+    case 'import-close': closeImportPanel(); break;
+    case 'import-extract': runImportExtract(); break;
+    case 'import-dryrun': runImportDryRun(); break;
+    case 'import-commit': runImportCommit(); break;
+    case 'import-use-current': useCurrentAsTarget(id); break;
+    case 'import-toggle-ignore': toggleCandidateIgnored(id); break;
+    case 'import-delete-cand': deleteCandidate(id); break;
+    case 'import-toggle-raw': toggleCandidateRaw(id); break;
     case 'conflict-download': downloadConflictBackup(); break;
     case 'conflict-force-save': forceSaveConflictBackup(); break;
     case 'conflict-reload': reloadFromRemote(); break;
